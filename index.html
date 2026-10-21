@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>협곡 키우기</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+  <header id="top">
+    <div class="res"><span>💰</span><b id="gold">0</b></div>
+    <div class="res"><span>💎</span><b id="gems">0</b></div>
+    <div class="res"><span>⚙️</span><b id="parts">0</b></div>
+    <div class="res power"><span>⚔️</span><b id="power">0</b></div>
+  </header>
+
+  <section id="battle">
+    <div id="stagebar">
+      <div id="stageLabel">-</div>
+      <div class="ctrl">
+        <button id="autoBtn" class="chip">자동 진행</button>
+        <button id="speedBtn" class="chip">x1</button>
+      </div>
+    </div>
+    <div id="field">
+      <div id="allies" class="side"></div>
+      <div id="vs">VS</div>
+      <div id="enemies" class="side"></div>
+      <div id="banner"></div>
+    </div>
+    <div id="log"></div>
+  </section>
+
+  <main id="panel"></main>
+
+  <nav id="nav">
+    <button data-tab="heroes" class="on">🦸<span>챔피언</span></button>
+    <button data-tab="deck">🧩<span>편성</span></button>
+    <button data-tab="gacha">🎲<span>소환</span></button>
+    <button data-tab="forge">🔨<span>대장간</span></button>
+    <button data-tab="tower">🗼<span>공허의 탑</span></button>
+  </nav>
+</div>
+
+<div id="modal" class="hidden"><div id="modalBox"></div></div>
+<div id="toast"></div>
+
+<script src="data.js"></script>
+<script src="game.js"></script>
+</body>
+</html>

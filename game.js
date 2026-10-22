@@ -710,12 +710,50 @@ function craft(minGrade = 0, free = false) {
 // 비용은 기존 공식의 2배를 최소로 하고, 장비 레벨(=최고 스테이지)의 처치 골드에 비례해 함께 오른다.
 // (기존 공식은 iLv에 정비례라 골드 수입이 지수로 늘어나는 후반에 강화가 너무 쌌다)
 const enhanceCost = g => Math.floor(Math.pow(1.32, g.plus) * (g.grade + 1) * Math.max(600 * (1 + g.ilvl * 0.1), killGold(g.ilvl) * 50));
-function enhanceOdds(plus) {
+function defaultEnhanceOdds(plus) {
   const great = 0.04;
   const success = Math.max(0.18, 0.62 - plus * 0.03);
   const minus = plus >= 4 ? Math.min(0.12, 0.01 + 0.006 * plus) : 0;
   const destroy = plus >= 8 ? Math.min(0.03, 0.002 + 0.0015 * (plus - 8)) : 0;
   return { great, success, minus, destroy, fail: Math.max(0, 1 - great - success - minus - destroy) };
+}
+// 넥슨 오픈API 확률표(probability.js)가 있으면 그 단계의 실제 스타포스 결과 비율을 쓴다.
+// 표본이 적은 단계는 기본 확률과 섞는다 (표본 50건이면 반반). 성공 중 일부(10%)는 대성공(+2~5)으로 처리한다
+const PROB_BLEND = 50;
+function enhanceOdds(plus) {
+  const d = defaultEnhanceOdds(plus), api = typeof NEXON_PROB !== 'undefined' && NEXON_PROB && NEXON_PROB.starforce && NEXON_PROB.starforce[plus];
+  if (!api || !api.samples) return { ...d, src: 'default' };
+  const w = api.samples / (api.samples + PROB_BLEND), mix = (a, b) => w * a + (1 - w) * b;
+  const succ = mix(api.success, d.success + d.great), minus = mix(api.drop, d.minus), destroy = mix(api.destroy, d.destroy);
+  const great = succ * 0.1, success = succ - great;
+  return { great, success, minus, destroy, fail: Math.max(0, 1 - great - success - minus - destroy), src: 'api', samples: api.samples };
+}
+
+// 큐브: 장착 장비의 등급을 올린다. 실패하면 추가 능력치만 다시 뽑는다 (메이플스토리 큐브와 같은 방식)
+// 등급 상승 확률은 넥슨 오픈API 큐브 기록(레어→에픽, 에픽→유니크, 유니크→레전드리, 레전드리)을 일반→희귀…전설→신화에 대응시킨다
+const CUBE_COST = 30;            // ⚙️ 부품
+const CUBE_GRADE_KEYS = ['레어', '에픽', '유니크', '레전드리'];
+const CUBE_DEFAULT = [0.15, 0.05, 0.02, 0.008];
+function cubeOdds(grade) {
+  if (grade >= GEAR_GRADES.length - 1) return null;
+  const api = typeof NEXON_PROB !== 'undefined' && NEXON_PROB && NEXON_PROB.cube && NEXON_PROB.cube[CUBE_GRADE_KEYS[grade]];
+  if (!api || !api.samples) return { up: CUBE_DEFAULT[grade], src: 'default' };
+  const w = api.samples / (api.samples + PROB_BLEND);
+  return { up: w * api.up + (1 - w) * CUBE_DEFAULT[grade], src: 'api', samples: api.samples };
+}
+function useCube(slot) {
+  const g = S.gear[slot]; if (!g) return null;
+  const o = cubeOdds(g.grade); if (!o) { toast('최고 등급입니다'); return null; }
+  if (S.parts < CUBE_COST) { toast(`⚙️ 부품이 부족합니다 (${CUBE_COST}개 필요)`); return null; }
+  S.parts -= CUBE_COST;
+  const main = GEAR_SLOTS[slot].main, up = Math.random() < o.up;
+  if (up) g.grade++;
+  // 추가 능력치(주 능력치 제외)를 새 등급의 개수만큼 다시 뽑는다
+  const others = Object.keys(GEAR_STATS).filter(k => k !== main).sort(() => Math.random() - 0.5).slice(0, GEAR_GRADES[g.grade].n - 1);
+  const mainSt = g.stats.find(st => st.k === main) || { k: main, r: rand(0.9, 1.1) };
+  g.stats = [mainSt, ...others.map(k => ({ k, r: rand(0.9, 1.1) }))];
+  refreshAllyStats(); save();
+  return { up, grade: g.grade };
 }
 function enhance(slot) {
   const g = S.gear[slot]; if (!g) return null;
@@ -736,7 +774,7 @@ function enhance(slot) {
 const ENH_MSG = { great: ['✨ 대성공!', '#ffd84a'], success: ['성공', '#6ee87f'], fail: ['실패 (변화 없음)', '#8a93a6'], minus: ['⚠️ 실패 — 강화 단계 하락', '#ff9c3b'], destroy: ['💥 장비가 파괴되었습니다…', '#ff4f6d'] };
 
 // ===== UI =====
-let tab = 'heroes', heroFilter = 'all', rarFilter = 'all', heroSort = 'power', lastPull = null, lastCraft = null, forgeSel = 'weapon', lastEnh = null, showAllSyn = false;
+let tab = 'heroes', heroFilter = 'all', rarFilter = 'all', heroSort = 'power', lastPull = null, lastCraft = null, forgeSel = 'weapon', lastEnh = null, lastCube = null, showAllSyn = false;
 const SORTS = { power: '전투력', hp: '체력', atk: '공격력', def: '방어력', aspd: '공격 속도', crit: '치명타' };
 function switchTab(t) {
   tab = t;
@@ -835,8 +873,21 @@ function forgeDetailHTML() {
     <div class="gstats">${g.stats.map(st => `<div>${st.k === s.main ? '⭐ ' : '· '}${gearStatLine(g, st)}</div>`).join('')}</div>
     <div class="sub" style="margin:6px 0">성공 시 능력치 +12%씩 (강화 단계당) · 판매가 💰 ${fmt(sellPrice(g))}</div>
     ${g.plus >= MAX_PLUS ? '<div class="sub">최대 강화입니다</div>' : `<div class="odds"><span style="color:#ffd84a">대성공 ${pc(o.great)} (+2~5)</span><span style="color:#6ee87f">성공 ${pc(o.success)} (+1)</span><span>실패 ${pc(o.fail)}</span>${o.minus ? `<span style="color:#ff9c3b">하락 ${pc(o.minus)} (-1)</span>` : ''}${o.destroy ? `<span style="color:#ff4f6d">파괴 ${pc(o.destroy)}</span>` : ''}</div>
+      <div class="sub" style="margin-top:4px">${probSrcText(o)}</div>
       <button class="btn teal big" id="enhBtn" style="width:100%;margin-top:8px">강화 💰 ${fmt(enhanceCost(g))}</button>`}
-    <div id="enhRes" style="min-height:20px;margin-top:6px;font-weight:700;text-align:center;color:${e ? e[1] : 'inherit'}">${e ? `${e[0]}${lastEnh.delta > 0 ? ` (+${lastEnh.delta})` : ''}` : ''}</div>`;
+    <div id="enhRes" style="min-height:20px;margin-top:6px;font-weight:700;text-align:center;color:${e ? e[1] : 'inherit'}">${e ? `${e[0]}${lastEnh.delta > 0 ? ` (+${lastEnh.delta})` : ''}` : ''}</div>
+    ${cubeHTML(g)}`;
+}
+function probSrcText(o) {
+  return o.src === 'api' ? `📊 확률: 넥슨 오픈API (${NEXON_PROB.source}, 표본 ${fmt(o.samples)}건)` : '📊 확률: 기본값 (넥슨 오픈API 확률표 없음)';
+}
+function cubeHTML(g) {
+  const o = cubeOdds(g.grade), c = lastCube && lastCube.slot === forgeSel ? lastCube : null;
+  return `<div class="box" style="margin:8px 0 0"><div style="font-weight:700">🎲 큐브 — 등급 상승</div>
+    ${o ? `<div class="sub">${GEAR_GRADES[g.grade].name} → <span style="color:${GEAR_GRADES[g.grade + 1].color}">${GEAR_GRADES[g.grade + 1].name}</span> 확률 <b style="color:var(--gold2)">${(o.up * 100).toFixed(2)}%</b> · 실패해도 추가 능력치는 다시 뽑힙니다</div>
+      <div class="sub">${probSrcText(o)}</div>
+      <button class="btn big" id="cubeBtn" style="width:100%;margin-top:6px">큐브 사용 (⚙️ ${CUBE_COST})</button>` : '<div class="sub">최고 등급(신화)이라 더 올릴 수 없습니다</div>'}
+    <div style="min-height:18px;margin-top:4px;text-align:center;font-weight:700;color:${c && c.up ? '#ffd84a' : 'var(--dim)'}">${c ? (c.up ? `✨ 등급 상승! → ${GEAR_GRADES[c.grade].name}` : '등급 유지 · 추가 능력치 재설정') : ''}</div></div>`;
 }
 function renderGearBox() {
   const gb = $('#gearBox'); if (gb) gb.innerHTML = GEAR_KEYS.map(gearCardHTML).join('');
@@ -1009,6 +1060,7 @@ $('#panel').onclick = e => {
   if (t.id === 'craftBtn') { const r = craft(); if (r) { lastCraft = r; if (r.result === 'equip') forgeSel = r.item.slot; refreshPanel(); $('#ovenIcon').classList.add('go'); } }
   if (t.id === 'autoCraftBtn') { S.autoCraft = !S.autoCraft; refreshPanel(); }
   if (t.id === 'enhBtn') { const r = enhance(forgeSel); if (r) { lastEnh = { slot: forgeSel, ...r }; renderGearBox(); } }
+  if (t.id === 'cubeBtn') { const r = useCube(forgeSel); if (r) { lastCube = { slot: forgeSel, ...r }; renderGearBox(); } }
   if (t.id === 'towerBtn') startTower();
   if (t.id === 'autoTowerBtn') {
     S.autoTower = !S.autoTower; save();

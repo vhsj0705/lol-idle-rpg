@@ -9,6 +9,16 @@ powershell -ExecutionPolicy Bypass -File serve.ps1
 ```
 챔피언 이미지와 원작 스킬 설명은 Riot Data Dragon CDN에서 불러오므로 인터넷 연결이 필요합니다.
 
+## 확률 데이터 (넥슨 오픈API)
+장비 강화와 큐브 확률은 넥슨 오픈API의 메이플스토리 기록으로 만듭니다. 강화에는 스타포스 기록, 큐브에는 등급 상승 기록을 씁니다. API 키는 저장소에 넣지 않고, 아래 스크립트로 한 번 받아서 확률 숫자만 `probability.js`에 저장합니다.
+```
+$env:NEXON_API_KEY = '발급받은 키'
+powershell -ExecutionPolicy Bypass -File tools\nexon-probability.ps1 -Days 90
+```
+- 기록 API는 키를 발급한 계정의 사용 기록만 돌려줍니다. 그래서 표본이 적은 단계는 기본 확률과 섞습니다(표본 50건이면 반반).
+- 확률이 다른 기록(슈페리얼 장비, 찬스 타임, 파괴 방지)은 제외합니다.
+- `probability.js`가 비어 있으면(`null`) 게임은 기본 확률을 씁니다. 대장간 화면에 지금 어떤 확률을 쓰고 있는지 표시됩니다.
+
 ## 데이터 출처
 | 항목 | 출처 |
 |---|---|

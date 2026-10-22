@@ -121,7 +121,10 @@ const towerStage = f => Math.round(4 + f * 2.4);
 // 적 종류별 배율 / 전투 시간 환산용
 // champ: 챔피언 대결 스테이지의 적 챔피언 (스킬도 사용하므로 일반 스테이지보다 강하다)
 const KIND = { mob: { hp: 1, atk: 1, aspd: 0.8, g: 1, p: 1 }, elite: { hp: 4, atk: 1.6, aspd: 0.8, g: 5, p: 3 }, boss: { hp: 10, atk: 2.2, aspd: 0.6, g: 15, p: 8 },
-  champ: { hp: 4.5, atk: 1.7, aspd: 0.9, g: 6, p: 4 } };
+  champ: { hp: 4.5, atk: 1.7, aspd: 0.9, g: 6, p: 4 }, tchamp: { hp: 9, atk: 2.0, aspd: 0.9, g: 15, p: 8 } };
+// 공허의 탑 챔피언 층: 5층마다 전설 등급 챔피언들이 무작위로 나온다 (일반 챔피언 대결보다 강하다)
+const isTowerChampFloor = f => f % 5 === 0;
+const towerChampCount = f => 3 + (f >= 20 ? 1 : 0) + (f >= 40 ? 1 : 0);
 // 챔피언 대결: 각 챕터의 5번째 스테이지(x-5) 마지막 웨이브에 그 지역 챔피언들이 나온다
 const isChampStage = s => (s - 1) % 10 + 1 === 5;
 const champStageCount = s => 3 + (s > 30 ? 1 : 0) + (s > 70 ? 1 : 0);
@@ -153,9 +156,13 @@ function threat(waveList, s) {
 }
 const recFromThreat = t => REC_A * Math.pow(t, REC_EXP) * POWER_SCALE;
 // 챔피언 대결은 적이 스킬도 쓰므로 적 챔피언 수(3/4/5명)에 따라 추가 보정 (시뮬레이션 기준)
+// 탑 챔피언 층은 이 보정만으로 시뮬레이션 승률이 일반 층(× REC_TOWER)과 비슷하다
 const REC_CHAMP = { 3: 1.4, 4: 1.7, 5: 2.0 };
 function recPowerStage(s) { return recFromThreat(threat([waveKinds(s, 1, 3), waveKinds(s, 2, 3), waveKinds(s, 3, 3)], s)) * (isChampStage(s) ? REC_CHAMP[champStageCount(s)] : 1); }
-function recPowerTower(f) { return recFromThreat(threat([['elite', 'boss', 'elite']], towerStage(f))) * REC_TOWER; }
+function recPowerTower(f) {
+  if (isTowerChampFloor(f)) { const n = towerChampCount(f); return recFromThreat(threat([Array(n).fill('tchamp')], towerStage(f))) * REC_CHAMP[n]; }
+  return recFromThreat(threat([['elite', 'boss', 'elite']], towerStage(f))) * REC_TOWER;
+}
 // 내 전투력 / 권장 전투력 → 성공 가능성 표시
 function odds(power, rec) {
   const r = power / rec;
@@ -309,8 +316,8 @@ function makeEnemy(m, s, kind) {
     timer: rand(0, 0.8), stun: 0, buffT: 0, buffMul: 0, dead: false, gold: killGold(s) * k.g, parts: partsPerKill(s, kind), slamT: 0, shield: 0 };
 }
 // 적 챔피언: 스테이지 기준 능력치에 포지션 성향(탑은 단단, 원딜은 강한 공격 등)을 반영하고, 자기 스킬을 사용한다
-function makeEnemyChamp(c, s) {
-  const u = makeEnemy([c.name, '⚔️'], s, 'champ'), base = BASE[c.pos], tm = TAGMOD[c.tag];
+function makeEnemyChamp(c, s, kind = 'champ') {
+  const u = makeEnemy([c.name, '⚔️'], s, kind), base = BASE[c.pos], tm = TAGMOD[c.tag];
   const hpM = base.hp * tm.hp / 33, atkM = base.atk * tm.atk / 2.8;
   Object.assign(u, { c, champId: c.id, maxHp: u.maxHp * hpM, hp: u.maxHp * hpM, atk: u.atk * atkM, def: u.def * (base.def / 18),
     aspd: base.aspd * 0.85, crit: base.crit + tm.crit, skill: tm.skill, gaugeRate: tm.gauge, si: randSkill(c), gauge: rand(0, MANA_MAX * 0.2) });
@@ -334,8 +341,12 @@ function startTower(show = true) {
   const b = bonuses(), f = S.tower, s = towerStage(f);
   B = { mode: 'tower', s, floor: f, wave: 1, waves: 1, bonus: b, allies: S.deck.map(id => makeAlly(id, b)), enemies: [], over: false };
   const boss = BOSSES[(f - 1) % BOSSES.length];
-  B.enemies = [makeEnemy(pick(ELITES), s, 'elite'), makeEnemy([`${f}층 수호자: ${boss[0]}`, boss[1], boss[2]], s, 'boss'), makeEnemy(pick(ELITES), s, 'elite')];
+  if (isTowerChampFloor(f)) {
+    const pool = CHAMPS.filter(c => c.rarity === 3).sort(() => Math.random() - 0.5);
+    B.enemies = pool.slice(0, towerChampCount(f)).map(c => makeEnemyChamp(c, s, 'tchamp'));
+  } else B.enemies = [makeEnemy(pick(ELITES), s, 'elite'), makeEnemy([`${f}층 수호자: ${boss[0]}`, boss[1], boss[2]], s, 'boss'), makeEnemy(pick(ELITES), s, 'elite')];
   renderField();
+  if (isTowerChampFloor(f)) banner(`⚔️ ${f}층 챔피언 대결! 전설 챔피언 ${B.enemies.length}명이 나타났다`);
   if (show) switchTab('tower'); else if (tab === 'tower') refreshPanel();
 }
 function spawnWave() {
@@ -936,9 +947,13 @@ function forgeHTML() {
 }
 function towerHTML() {
   const f = S.tower, boss = BOSSES[(f - 1) % BOSSES.length], e = enemyStat(towerStage(f)), r = towerReward(f);
+  const head = isTowerChampFloor(f)
+    ? `<div style="font-size:42px">⚔️</div><div style="font-size:18px;font-weight:900">${f}층 챔피언 대결</div>
+      <div class="sub">무작위 전설 챔피언 ${towerChampCount(f)}명 · 챔피언마다 스킬 사용 · 체력 약 ${fmt(e.hp * KIND.tchamp.hp)}</div>`
+    : `<div style="font-size:42px">${iconImg(cdIcon(boss[2]), boss[1], 'mimg big')}</div><div style="font-size:18px;font-weight:900">${f}층 수호자: ${boss[0]}</div>
+      <div class="sub">보스 체력 ${fmt(e.hp * 10)} · 공격력 ${fmt(e.atk * 2.2)} · 정예 2마리 동반</div>`;
   return `<div class="box" style="text-align:center"><h3 style="justify-content:center">🗼 공허의 탑</h3>
-      <div style="font-size:42px">${iconImg(cdIcon(boss[2]), boss[1], 'mimg big')}</div><div style="font-size:18px;font-weight:900">${f}층 수호자: ${boss[0]}</div>
-      <div class="sub">보스 체력 ${fmt(e.hp * 10)} · 공격력 ${fmt(e.atk * 2.2)} · 정예 2마리 동반</div>
+      ${head}
       <div style="margin:8px 0">${recHTML(recPowerTower(f))}</div>
       <div class="sub">내 전투력 ⚔️ ${fmt(teamPower())}</div>
       <div class="box" style="margin:10px 0;text-align:left"><div class="sub">이 층의 보상</div><div style="line-height:1.8">${towerRewardText(r).replace(/ · /g, '<br>')}</div>

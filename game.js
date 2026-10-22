@@ -37,10 +37,8 @@ const TAGMOD = {
   A: { hp: 0.90, atk: 1.15, def: 1.0, skill: 1.0, gauge: 1.0, crit: 0.10 },
   S: { hp: 1.00, atk: 1.00, def: 1.0, skill: 1.0, gauge: 1.15, crit: 0 },
 };
-// 수치 인플레이션 완화: 레벨·스테이지에 따른 지수 성장률과 ★·등급 배율을 모두 제곱근 수준으로 낮췄다.
-// 성장의 '비율 관계'(레벨 몇 개 = ★ 하나, 골드 수입 대비 비용)는 그대로 두고 숫자 크기만 작게 만든다.
-const LV_GROWTH = 1.037;                       // 레벨당 능력치 +3.7% (복리)
-const STAR_MULT = [1, 1.22, 1.48, 1.79, 2.14, 2.55]; // ★1~★6 능력치 배율
+// 레벨·★ 성장률은 등급마다 다르다 (data.js RARITY의 lv/star). 높은 등급일수록 강화할 때 더 많이 오른다
+const growthMult = (rarity, lv, star) => { const r = RARITY[rarity]; return r.mult * Math.pow(r.lv, lv - 1) * Math.pow(r.star, star - 1); };
 const STAR_NEED = [1, 2, 4, 8, 15];             // 다음 ★까지 필요한 중복 카드 수
 const MAX_STAR = 6;
 const MAX_DECK = 10;
@@ -50,9 +48,8 @@ const RARITY_COST = [1, 2, 3.5, 5];
 const levelCost = (lv, rarity) => Math.floor(20 * Math.pow(1.068, lv - 1) * RARITY_COST[rarity]);
 // 성급 강화: 중복 카드 + 골드 (성급이 오를수록 약 1.8배씩)
 const starCost = (star, rarity) => Math.floor(200 * Math.pow(1.79, star - 1) * RARITY_COST[rarity]);
-// 스킬: Q/W/E는 게이지가 빨리 차고, R(궁극기)은 느리지만 강하다
-const skillGain = key => key === 'R' ? 11 : 20;  // 평타 1회당 게이지
-const skillPow = key => key === 'R' ? 1.9 : 1.0;
+// 스킬: 챔피언마다 위력(c.pw)과 마나 비용(c.mana, 위력에 비례), 마나 회복 속도(c.manaGain)가 다르다
+const MANA_REGEN = 1 / 8;                         // 초당 자연 회복 = 평타 1회 회복량 × 1/8
 
 // 소환
 const PULL_COST = 100, PULL10_COST = 1000, PITY = 70;
@@ -110,7 +107,12 @@ const killGoldV1 = s => 5 * Math.pow(1.12, s - 1);   // 이전 경제 (저장 �
 const towerStage = f => Math.round(4 + f * 2.4);
 
 // 적 종류별 배율 / 전투 시간 환산용
-const KIND = { mob: { hp: 1, atk: 1, aspd: 0.8, g: 1, p: 1 }, elite: { hp: 4, atk: 1.6, aspd: 0.8, g: 5, p: 3 }, boss: { hp: 10, atk: 2.2, aspd: 0.6, g: 15, p: 8 } };
+// champ: 챔피언 대결 스테이지의 적 챔피언 (스킬도 사용하므로 일반 스테이지보다 강하다)
+const KIND = { mob: { hp: 1, atk: 1, aspd: 0.8, g: 1, p: 1 }, elite: { hp: 4, atk: 1.6, aspd: 0.8, g: 5, p: 3 }, boss: { hp: 10, atk: 2.2, aspd: 0.6, g: 15, p: 8 },
+  champ: { hp: 4.5, atk: 1.7, aspd: 0.9, g: 6, p: 4 } };
+// 챔피언 대결: 각 챕터의 5번째 스테이지(x-5) 마지막 웨이브에 그 지역 챔피언들이 나온다
+const isChampStage = s => (s - 1) % 10 + 1 === 5;
+const champStageCount = s => 3 + (s > 30 ? 1 : 0) + (s > 70 ? 1 : 0);
 // 스테이지 보상: 골드 외 보상은 초기 버전의 2.5배 + 스테이지가 오를수록 증가
 const partsPerKill = (s, kind) => KIND[kind].p * 2.5 * (1 + s * 0.05);
 const firstClearGems = s => Math.floor((s % 10 === 0 ? 375 : 75) * (1 + s * 0.03));
@@ -118,12 +120,13 @@ const firstClearTickets = s => s % 20 === 0 ? 1 + Math.floor(s / 60) : 0;   // �
 
 // ===== 권장 전투력 =====
 // 해당 전투에서 만나는 적의 총 체력과 초당 피해량으로 위협도를 구하고,
-// 전투 시뮬레이션에서 승률 약 83%가 되는 전투력에 맞춰 보정한다 (권장 = 4.87 × 위협도^0.9, 탑은 ×1.3)
-const REC_A = 4.87, REC_EXP = 0.9, REC_TOWER = 1.3;
+// 전투 시뮬레이션에서 승률 약 83%가 되는 전투력에 맞춰 보정한다 (권장 = 5.6 × 위협도^0.9, 탑은 ×1.38)
+const REC_A = 5.6, REC_EXP = 0.9, REC_TOWER = 1.38;
 function waveKinds(s, wave, waves) {
   const sub = (s - 1) % 10 + 1;
   if (wave < waves) return Array(3 + (s > 20 ? 1 : 0)).fill('mob');
-  return sub === 10 ? ['boss'] : ['mob', 'elite', 'mob'];
+  if (sub === 10) return ['boss'];
+  return isChampStage(s) ? Array(champStageCount(s)).fill('champ') : ['mob', 'elite', 'mob'];
 }
 function threat(waveList, s) {
   const e = enemyStat(s); let hp = 0, dps = 0;
@@ -135,7 +138,8 @@ function threat(waveList, s) {
   return Math.sqrt(hp * dps);
 }
 const recFromThreat = t => REC_A * Math.pow(t, REC_EXP);
-function recPowerStage(s) { return recFromThreat(threat([waveKinds(s, 1, 3), waveKinds(s, 2, 3), waveKinds(s, 3, 3)], s)); }
+const REC_CHAMP = 1.3;  // 챔피언 대결은 적이 스킬도 쓰므로 위협도에 추가 보정 (시뮬레이션 기준)
+function recPowerStage(s) { return recFromThreat(threat([waveKinds(s, 1, 3), waveKinds(s, 2, 3), waveKinds(s, 3, 3)], s)) * (isChampStage(s) ? REC_CHAMP : 1); }
 function recPowerTower(f) { return recFromThreat(threat([['elite', 'boss', 'elite']], towerStage(f))) * REC_TOWER; }
 // 내 전투력 / 권장 전투력 → 성공 가능성 표시
 function odds(power, rec) {
@@ -245,7 +249,7 @@ function bonuses(deck = S.deck) {
 function calcStats(id, b = bonuses()) {
   const c = CHAMP_BY_ID[id], o = S.owned[id] || { lv: 1, star: 1 };
   const base = BASE[c.pos], tm = TAGMOD[c.tag];
-  const m = RARITY[c.rarity].mult * Math.pow(LV_GROWTH, o.lv - 1) * STAR_MULT[o.star - 1];
+  const m = growthMult(c.rarity, o.lv, o.star);
   return {
     hp: base.hp * tm.hp * m * (1 + b.hp),
     atk: base.atk * tm.atk * m * (1 + b.atk),
@@ -262,7 +266,7 @@ function teamPower() { const b = bonuses(); return S.deck.reduce((a, id) => a + 
 
 // 스킬 설명 (게임 내 효과)
 function skillEffectText(c) {
-  const pw = skillPow(c.key), all = c.key === 'R';
+  const pw = c.pw, all = c.key === 'R';
   const pct = v => Math.round(v * pw * 100) + '%';
   switch (c.eff) {
     case 'd': return (all || c.pos === 'M') ? `모든 적에게 공격력의 ${pct(2.2)} 피해` : `대상에게 공격력의 ${pct(3.5)} 피해`;
@@ -279,12 +283,27 @@ const field = { allies: $('#allies'), enemies: $('#enemies') };
 
 function makeAlly(id, b) {
   const c = CHAMP_BY_ID[id], st = calcStats(id, b);
-  return { side: 'a', id, c, ...st, maxHp: st.hp, hp: st.hp, shield: 0, gauge: rand(0, 40), timer: rand(0, 0.5), stun: 0, buffT: 0, buffMul: 0, dead: false };
+  return { side: 'a', id, c, ...st, maxHp: st.hp, hp: st.hp, shield: 0, gauge: rand(0, c.mana * 0.4), timer: rand(0, 0.5), stun: 0, buffT: 0, buffMul: 0, dead: false };
 }
 function makeEnemy(m, s, kind) {
   const e = enemyStat(s), k = KIND[kind];
   return { side: 'e', name: m[0], icon: m[1], iconKey: m[2], kind, maxHp: e.hp * k.hp, hp: e.hp * k.hp, atk: e.atk * k.atk, def: e.def, aspd: k.aspd, crit: 0.05,
-    timer: rand(0, 0.8), stun: 0, dead: false, gold: killGold(s) * k.g, parts: partsPerKill(s, kind), slamT: 0, shield: 0 };
+    timer: rand(0, 0.8), stun: 0, buffT: 0, buffMul: 0, dead: false, gold: killGold(s) * k.g, parts: partsPerKill(s, kind), slamT: 0, shield: 0 };
+}
+// 적 챔피언: 스테이지 기준 능력치에 포지션 성향(탑은 단단, 원딜은 강한 공격 등)을 반영하고, 자기 스킬을 사용한다
+function makeEnemyChamp(c, s) {
+  const u = makeEnemy([c.name, '⚔️'], s, 'champ'), base = BASE[c.pos], tm = TAGMOD[c.tag];
+  const hpM = base.hp * tm.hp / 330, atkM = base.atk * tm.atk / 28;
+  Object.assign(u, { c, champId: c.id, maxHp: u.maxHp * hpM, hp: u.maxHp * hpM, atk: u.atk * atkM, def: u.def * (base.def / 18),
+    aspd: base.aspd * 0.85, crit: base.crit + tm.crit, skill: tm.skill, gaugeRate: tm.gauge, gauge: rand(0, c.mana * 0.3) });
+  return u;
+}
+// 챕터 지역(데마시아, 녹서스 …)의 챔피언 중에서 고른다
+function champWave(s) {
+  const region = CHAPTERS[Math.floor((s - 1) / 10) % CHAPTERS.length];
+  const syn = SYNERGIES.find(x => x.kind === 'region' && x.name === region);
+  const pool = (syn ? syn.members : CHAMPS.map(c => c.id)).slice().sort(() => Math.random() - 0.5);
+  return pool.slice(0, champStageCount(s)).map(id => makeEnemyChamp(CHAMP_BY_ID[id], s));
 }
 function startStage() {
   if (S.autoTower && S.deck.length) return startTower(false); // 탑 자동 도전 중이면 탑을 계속한다
@@ -308,6 +327,9 @@ function spawnWave() {
     B.enemies = Array.from({ length: n }, () => makeEnemy(pick(MOBS), s, 'mob'));
   } else if (sub === 10) {
     B.enemies = [makeEnemy(BOSSES[Math.floor((s - 1) / 10) % BOSSES.length], s, 'boss')];
+  } else if (isChampStage(s)) {
+    B.enemies = champWave(s);
+    banner(`⚔️ 챔피언 대결! ${CHAPTERS[Math.floor((s - 1) / 10) % CHAPTERS.length]}의 챔피언들이 나타났다`);
   } else {
     const el = ELITES[(s - 1) % ELITES.length], m = pick(MOBS);
     B.enemies = [makeEnemy(m, s, 'mob'), makeEnemy(el, s, 'elite'), makeEnemy(m, s, 'mob')];
@@ -319,8 +341,11 @@ function spawnWave() {
 const monsterPic = u => u.iconKey ? iconImg(cdIcon(u.iconKey), u.icon) : u.icon;
 function unitEl(u) {
   const d = document.createElement('div');
-  d.className = `unit ${u.side === 'a' ? 'ally' : 'enemy'}${u.kind === 'boss' ? ' boss' : ''}`;
-  if (u.side === 'a') {
+  d.className = `unit ${u.side === 'a' ? 'ally' : 'enemy'}${u.kind === 'boss' ? ' boss' : ''}${u.champId ? ' echamp' : ''}`;
+  if (u.champId) {
+    d.innerHTML = `<div class="info" style="text-align:right"><div class="nm">⚔️ ${u.name}</div><div class="bar hp"><i></i><span class="sh"></span><em class="bt"></em></div><div class="bar gauge"><i></i><em class="bt"></em></div></div>
+      <div class="pic" style="background-image:url(${img(u.champId)})"><span class="badge">${POS[u.c.pos].icon}</span></div>`;
+  } else if (u.side === 'a') {
     const o = S.owned[u.id];
     d.innerHTML = `<div class="pic" style="background-image:url(${img(u.id)})"><span class="badge">${POS[u.c.pos].icon}${o.lv}</span></div>
       <div class="info"><div class="nm">${u.c.name} <span style="color:#ffd84a">${'★'.repeat(o.star)}</span></div>
@@ -343,7 +368,7 @@ function renderField() {
 function updateStageLabel() {
   if (!B) return;
   const rec = B.mode === 'tower' ? recPowerTower(B.floor) : recPowerStage(B.s);
-  $('#stageLabel').innerHTML = (B.mode === 'tower' ? `🗼 공허의 탑 ${B.floor}층` : `${stageName(B.s)} · 웨이브 ${B.wave}/${B.waves}`) + ' ' + recHTML(rec);
+  $('#stageLabel').innerHTML = (B.mode === 'tower' ? `🗼 공허의 탑 ${B.floor}층` : `${stageName(B.s)}${isChampStage(B.s) ? ' <span class="champtag">⚔️ 챔피언 대결</span>' : ''} · 웨이브 ${B.wave}/${B.waves}`) + ' ' + recHTML(rec);
   $('#autoBtn').classList.toggle('on', S.auto);
   $('#autoBtn').textContent = S.auto ? '자동 진행 ON' : '반복 사냥';
   $('#speedBtn').textContent = 'x' + S.speed;
@@ -354,7 +379,7 @@ function paintUnits() {
     u.hpEl.style.width = Math.max(0, u.hp / u.maxHp * 100) + '%';
     u.shEl.style.width = Math.min(100, u.shield / u.maxHp * 100) + '%';
     u.hpTx.textContent = `${fmt(Math.max(0, u.hp))}/${fmt(u.maxHp)}`;
-    if (u.gEl) { u.gEl.style.width = u.gauge + '%'; u.gBar.classList.toggle('full', u.gauge >= 90); u.gTx.textContent = `${Math.floor(u.gauge)}/100`; }
+    if (u.gEl) { const mx = u.c.mana; u.gEl.style.width = Math.min(100, u.gauge / mx * 100) + '%'; u.gBar.classList.toggle('full', u.gauge >= mx * 0.9); u.gTx.textContent = `${Math.floor(u.gauge)}/${mx}`; }
     u.el.classList.toggle('dead', u.dead);
     u.el.classList.toggle('stun', u.stun > 0 && !u.dead);
     u.el.classList.toggle('buff', u.buffT > 0 && !u.dead);
@@ -402,12 +427,13 @@ function allyTarget(arr) {
   for (const u of list) { r -= w[u.c.pos]; if (r <= 0) return u; }
   return list[0];
 }
+// 아군·적 챔피언 공용: 시전자 편에 따라 적/아군이 바뀐다
 function castSkill(u) {
-  const c = u.c, pw = skillPow(c.key) * u.skill, all = c.key === 'R';
-  const foes = alive(B.enemies), friends = alive(B.allies);
+  const c = u.c, pw = c.pw * u.skill, all = c.key === 'R', mine = u.side === 'a';
+  const foes = alive(mine ? B.enemies : B.allies), friends = alive(mine ? B.allies : B.enemies);
   if (!foes.length) return;
-  const tgt = foes[0], atk = u.atk * (1 + u.buffMul);
-  banner(`${c.name} [${c.key}] ${c.skill}!`);
+  const tgt = mine ? foes[0] : allyTarget(foes), atk = u.atk * (1 + u.buffMul);
+  banner(`${mine ? '' : '⚠️ 적 '}${c.name} [${c.key}] ${c.skill}!`);
   flash(u, 'cast', 400);
   switch (c.eff) {
     case 'd':
@@ -441,25 +467,38 @@ function tick(dt) {
     if (u.dead) continue;
     if (u.buffT > 0) { u.buffT -= dt; if (u.buffT <= 0) u.buffMul = 0; }
     if (u.stun > 0) { u.stun -= dt; continue; }
-    u.gauge = Math.min(100, u.gauge + 2.5 * u.gaugeRate * dt);
+    u.gauge = Math.min(u.c.mana, u.gauge + u.c.manaGain * MANA_REGEN * u.gaugeRate * dt);
     u.timer += dt;
     const foes = alive(B.enemies); if (!foes.length) break;
-    if (u.gauge >= 100) { u.gauge = 0; castSkill(u); continue; }
+    if (u.gauge >= u.c.mana) { u.gauge = 0; castSkill(u); continue; }
     if (u.timer >= 1 / (u.aspd * (1 + u.buffMul))) {
       u.timer = 0;
       // 원딜/미드는 체력이 가장 낮은 적, 나머지는 맨 앞 적
       const tgt = (u.c.pos === 'A' || u.c.pos === 'M') ? foes.reduce((a, e) => e.hp < a.hp ? e : a) : foes[0];
       const crit = Math.random() < u.crit;
       dealDamage(u, tgt, u.atk * (1 + u.buffMul) * (crit ? 1.75 : 1), crit ? 'crit' : '');
-      u.gauge = Math.min(100, u.gauge + skillGain(u.c.key) * u.gaugeRate);
+      u.gauge = Math.min(u.c.mana, u.gauge + u.c.manaGain * u.gaugeRate);
       flash(u, 'atk', 100);
     }
   }
   for (const e of B.enemies) {
     if (e.dead) continue;
+    if (e.buffT > 0) { e.buffT -= dt; if (e.buffT <= 0) e.buffMul = 0; }
     if (e.stun > 0) { e.stun -= dt; continue; }
     if (!alive(B.allies).length) break;
     e.timer += dt;
+    if (e.champId) {
+      // 적 챔피언: 아군과 같은 방식으로 마나를 모아 스킬을 쓴다
+      e.gauge = Math.min(e.c.mana, e.gauge + e.c.manaGain * MANA_REGEN * e.gaugeRate * dt);
+      if (e.gauge >= e.c.mana) { e.gauge = 0; castSkill(e); continue; }
+      if (e.timer >= 1 / (e.aspd * (1 + e.buffMul))) {
+        e.timer = 0; flash(e, 'atk');
+        const crit = Math.random() < e.crit;
+        dealDamage(e, allyTarget(B.allies), e.atk * (1 + e.buffMul) * (crit ? 1.75 : 1), 'dmg');
+        e.gauge = Math.min(e.c.mana, e.gauge + e.c.manaGain * e.gaugeRate);
+      }
+      continue;
+    }
     if (e.kind === 'boss') {
       e.slamT += dt;
       if (e.slamT >= 6) { e.slamT = 0; banner(`⚠️ ${e.name}의 강타!`); alive(B.allies).forEach(a => dealDamage(e, a, e.atk * 1.3, 'dmg')); continue; }
@@ -853,14 +892,14 @@ function showDetail(id) {
     <div class="skill"><img id="spIcon" src="" alt="" style="visibility:hidden"><div>
       <div><span class="k">${c.key}</span><b>${c.skill}</b> <span class="sub">${EFFECTS[c.eff].icon} ${EFFECTS[c.eff].name} · 고정 스킬</span></div>
       <div class="eff">▶ ${skillEffectText(c)}</div>
-      <div class="sub" style="margin-top:3px">게이지 충전: ${c.key === 'R' ? '느림 (궁극기, 위력 x1.9)' : '빠름'}</div>
+      <div class="sub" style="margin-top:3px">스킬 위력 ×${c.pw.toFixed(2)} · 🔷 마나 ${c.mana} · 평타당 마나 +${c.manaGain} (초당 +${(c.manaGain * MANA_REGEN).toFixed(1)})</div>
       <p id="spDesc">원작 스킬 설명 불러오는 중…</p></div></div>
     ${o ? `<div class="box" style="margin-top:10px">
       <div class="row"><div style="flex:1">레벨업 비용 💰 <b>${o.lv >= cap ? '-' : fmt(levelCost(o.lv, c.rarity))}</b></div>
         <button class="btn" data-dlv="1" ${o.lv >= cap ? 'disabled' : ''}>+1</button><button class="btn" data-dlv="10" ${o.lv >= cap ? 'disabled' : ''}>+10</button><button class="btn" data-dlv="999" ${o.lv >= cap ? 'disabled' : ''}>MAX</button></div>
       <div style="margin-top:10px">성급 강화 (중복 카드) ${o.star >= MAX_STAR ? '— 최대' : `${o.copies} / ${need} · 💰 ${fmt(starCost(o.star, c.rarity))}`}</div>
       <div class="progress"><i style="width:${o.star >= MAX_STAR ? 100 : Math.min(100, o.copies / need * 100)}%"></i></div>
-      <div class="row"><div class="sub" style="flex:1">★당 능력치 대폭 상승 + 레벨 한계 +20</div><button class="btn teal" id="starBtn" ${canStar(id) ? '' : 'disabled'}>★ 강화</button></div></div>
+      <div class="row"><div class="sub" style="flex:1">${r.name} 성장: 레벨당 +${((r.lv - 1) * 100).toFixed(1)}% · ★당 +${Math.round((r.star - 1) * 100)}% · 레벨 한계 +20</div><button class="btn teal" id="starBtn" ${canStar(id) ? '' : 'disabled'}>★ 강화</button></div></div>
       <div class="row"><button class="btn big" id="deckToggle">${S.deck.includes(id) ? '편성 해제' : '편성에 추가'}</button><button class="btn big" id="closeBtn">닫기</button></div>`
       : `<div class="box sub" style="margin-top:10px;text-align:center">소환에서 획득할 수 있습니다.</div><button class="btn big" id="closeBtn" style="width:100%">닫기</button>`}`);
   loadSpell(c);

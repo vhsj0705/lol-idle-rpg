@@ -27,11 +27,13 @@ const EFFECTS = {
   s: { name: '보호막', icon: '🔰' },
   b: { name: '강화', icon: '🔥' },
 };
+// mult: 기본 배율, lv: 레벨당 능력치 성장(복리), star: ★ 1단계당 능력치 배율
+// 기준: 일반 ★6 Lv130 ≈ 전설 ★3 Lv70 (둘 다 기본의 약 43배)
 const RARITY = [
-  { key: 0, name: '일반', color: '#9aa4b1', mult: 1.0, rate: 55 },
-  { key: 1, name: '희귀', color: '#4aa8ff', mult: 1.14, rate: 30 },
-  { key: 2, name: '영웅', color: '#b46cff', mult: 1.3, rate: 12 },
-  { key: 3, name: '전설', color: '#ffb52e', mult: 1.52, rate: 3 },
+  { key: 0, name: '일반', color: '#9aa4b1', mult: 1.0, lv: 1.025, star: 1.12, rate: 55 },
+  { key: 1, name: '희귀', color: '#4aa8ff', mult: 1.14, lv: 1.031, star: 1.16, rate: 30 },
+  { key: 2, name: '영웅', color: '#b46cff', mult: 1.3, lv: 1.037, star: 1.206, rate: 12 },
+  { key: 3, name: '전설', color: '#ffb52e', mult: 1.52, lv: 1.043, star: 1.25, rate: 3 },
 ];
 
 // 문자열 해시로 등급을 결정 (고정): 전설 ~12%, 영웅 ~23%, 희귀 ~32%, 일반 ~33%
@@ -41,7 +43,12 @@ const CHAMPS = CHAMP_RAW.split(';').map(row => {
   const [id, name, pos, tag, key, skill, eff] = row.split(',');
   const h = hashStr(id + 'rarity');
   const rarity = h < 0.12 ? 3 : h < 0.35 ? 2 : h < 0.67 ? 1 : 0;
-  return { id, name, pos, tag, key, skill, eff, rarity };
+  // 스킬 위력: 궁극기(R) ×1.9 기준에 챔피언마다 ×0.75~1.3 차이. 마나 비용은 위력에 비례 (위력 1.0 = 마나 100)
+  const pw = Math.round((key === 'R' ? 1.9 : 1.0) * (0.75 + 0.55 * hashStr(id + 'pw')) * 100) / 100;
+  const mana = Math.round(pw * 100 / 5) * 5;
+  // 마나 회복 속도: 평타 1회당 14~26 (챔피언마다 다름), 초당 자연 회복은 그 1/8
+  const manaGain = Math.round((14 + 12 * hashStr(id + 'mana')) * 10) / 10;
+  return { id, name, pos, tag, key, skill, eff, rarity, pw, mana, manaGain };
 });
 const CHAMP_BY_ID = Object.fromEntries(CHAMPS.map(c => [c.id, c]));
 

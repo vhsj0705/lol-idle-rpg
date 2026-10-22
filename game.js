@@ -22,7 +22,7 @@ let toastT;
 function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 1800); }
 
 // ===== 밸런스 기획 =====
-// 수치 단위: 체력·공격력(아군·적 모두)과 골드·보석·부품은 이전의 1/10이다.
+// 수치 단위: 체력·공격력(아군·적 모두)은 이전의 1/10이다. 골드·보석·부품 등 재화는 원래 단위 그대로다.
 // 체력과 공격력을 같은 비율로 줄였으므로 전투 결과는 같고, 전투력·권장 전투력은 STAT_UNIT으로 이전 값에 맞춰 계산한다
 const STAT_UNIT = 10;
 // 포지션별 기본 능력치 (Lv1, ★1, 일반 기준)
@@ -49,15 +49,15 @@ const MAX_DECK = 10;
 const levelCap = star => star * 20 + 10;       // ★1:30 ★2:50 … ★6:130
 // 등급별 육성 비용 배율: 일반 ×1 · 희귀 ×2 · 영웅 ×3.5 · 전설 ×5
 const RARITY_COST = [1, 2, 3.5, 5];
-const levelCost = (lv, rarity) => Math.floor(2 * Math.pow(1.068, lv - 1) * RARITY_COST[rarity]);
+const levelCost = (lv, rarity) => Math.floor(20 * Math.pow(1.068, lv - 1) * RARITY_COST[rarity]);
 // 성급 강화: 중복 카드 + 골드 (성급이 오를수록 약 1.8배씩)
-const starCost = (star, rarity) => Math.floor(20 * Math.pow(1.79, star - 1) * RARITY_COST[rarity]);
+const starCost = (star, rarity) => Math.floor(200 * Math.pow(1.79, star - 1) * RARITY_COST[rarity]);
 // 스킬: 챔피언마다 위력(pw)과 마나 비용(mana, 위력에 비례), 마나 회복 속도(c.manaGain)가 다르다.
 // 등급이 높을수록 스킬이 많고(c.skills: 일반 1 ~ 전설 4개), 전투에서는 그중 하나를 무작위로 골라 쓴다
 const MANA_REGEN = 1 / 8;                         // 초당 자연 회복 = 평타 1회 회복량 × 1/8
 
 // 소환
-const PULL_COST = 10, PULL10_COST = 100, PITY = 70;
+const PULL_COST = 100, PULL10_COST = 1000, PITY = 70;
 
 // 장비: 6칸, 등급이 높을수록 능력치 종류(개수)와 수치가 늘어난다.
 // 챔피언처럼 등급마다 수치가 2배씩 차이 나고, 같은 장비 레벨(iLv)이면 +25까지 강화해도(최대 ×1.625) 다음 등급 +0을 넘지 못한다.
@@ -90,7 +90,7 @@ const gearName = g => GEAR_SLOTS[g.slot].items[g.grade][1];
 // 장비 아이콘: 장착 장비는 그 아이템, 빈 칸은 일반 등급 아이템을 흐리게 표시
 const gearIcon = (slot, grade, cls = 'gimg') => iconImg(itemImg(GEAR_SLOTS[slot].items[grade][0]), GEAR_SLOTS[slot].icon, cls);
 const GEAR_KEYS = Object.keys(GEAR_SLOTS);
-const CRAFT_COST = 1;
+const CRAFT_COST = 10;
 const MAX_PLUS = 25;
 
 // 스테이지
@@ -114,7 +114,7 @@ const stageName = s => {
 const LATE_STAGE = 100, LATE_GROWTH = 0.5;
 const growthStage = s => s <= LATE_STAGE ? s : LATE_STAGE + (s - LATE_STAGE) * LATE_GROWTH;
 const enemyStat = s => ({ hp: 15 * Math.pow(1.065, growthStage(s) - 1), atk: 1.6 * Math.pow(1.056, growthStage(s) - 1), def: 5 + s * 0.6 });
-const killGold = s => 0.5 * Math.pow(1.058, s - 1);
+const killGold = s => 5 * Math.pow(1.058, s - 1);
 const killGoldV1 = s => 5 * Math.pow(1.12, s - 1);   // 경제 v1 (저장 데이터 변환용)
 const towerStage = f => Math.round(4 + f * 2.4);
 
@@ -129,8 +129,8 @@ const towerChampCount = f => 3 + (f >= 20 ? 1 : 0) + (f >= 40 ? 1 : 0);
 const isChampStage = s => (s - 1) % 10 + 1 === 5;
 const champStageCount = s => 3 + (s > 30 ? 1 : 0) + (s > 70 ? 1 : 0);
 // 스테이지 보상: 골드 외 보상은 초기 버전의 2.5배 + 스테이지가 오를수록 증가
-const partsPerKill = (s, kind) => KIND[kind].p * 0.25 * (1 + s * 0.05);
-const firstClearGems = s => Math.floor((s % 10 === 0 ? 37.5 : 7.5) * (1 + s * 0.03));
+const partsPerKill = (s, kind) => KIND[kind].p * 2.5 * (1 + s * 0.05);
+const firstClearGems = s => Math.floor((s % 10 === 0 ? 375 : 75) * (1 + s * 0.03));
 const firstClearTickets = s => s % 20 === 0 ? 1 + Math.floor(s / 60) : 0;   // 보스 스테이지 2개마다
 
 // ===== 권장 전투력 =====
@@ -181,8 +181,8 @@ function recHTML(rec) {
 const SAVE_KEY = 'lolIdleSave_v1';
 let S;
 function newState() {
-  const st = { gold: 30, gems: 300, parts: 2, tickets: 3, stage: 1, maxStage: 1, tower: 1, owned: {}, deck: [], gear: Object.fromEntries(GEAR_KEYS.map(k => [k, null])),
-    pity: 0, pulls: 0, auto: true, speed: 1, autoCraft: false, autoTower: false, autoPull: false, econ: 3, lastSave: Date.now() };
+  const st = { gold: 300, gems: 3000, parts: 20, tickets: 3, stage: 1, maxStage: 1, tower: 1, owned: {}, deck: [], gear: Object.fromEntries(GEAR_KEYS.map(k => [k, null])),
+    pity: 0, pulls: 0, auto: true, speed: 1, autoCraft: false, autoTower: false, autoPull: false, econ: 4, lastSave: Date.now() };
   // 스타터: 포지션별 일반 등급 챔피언 1명씩
   for (const p of Object.keys(POS)) {
     const c = CHAMPS.find(c => c.pos === p && c.rarity === 0) || CHAMPS.find(c => c.pos === p);
@@ -197,7 +197,7 @@ function normalizeGear(st) {
   for (const k of GEAR_KEYS) {
     const it = st.gear && st.gear[k];
     if (it && it.stats) g[k] = it;
-    else { g[k] = null; if (it) refund += Math.floor(2 * (it.grade + 1) * Math.pow(1.1, it.ilvl || 1)); }
+    else { g[k] = null; if (it) refund += Math.floor(20 * (it.grade + 1) * Math.pow(1.1, it.ilvl || 1)); }
   }
   st.gear = g;
   if (refund) { st.gold += refund; migrationNote = `장비 시스템이 개편되어 기존 장비가 판매되었습니다. 💰 ${fmt(refund)} 지급`; }
@@ -208,15 +208,18 @@ function load() {
     if (raw) {
       const data = JSON.parse(raw), st = Object.assign(newState(), data);
       normalizeGear(st);
-      // 경제 v2(수치 축소): 보유 골드를 최고 스테이지의 처치 골드 비율만큼 줄여 새 단위로 바꾼다 (v3 단위까지 한 번에)
-      // 경제 v3(수치 1/10): 골드·보석·부품을 1/10로 바꾼다
-      const econ = data.econ || 1;
-      if (econ < 3) {
+      // 경제 v2(수치 축소): 보유 골드를 최고 스테이지의 처치 골드 비율만큼 줄여 새 단위로 바꾼다
+      if (!data.econ) {
         const before = st.gold;
-        st.gold = econ === 1 ? Math.floor(st.gold * killGold(st.maxStage) / killGoldV1(st.maxStage)) : st.gold / 10;
-        st.gems = Math.floor(st.gems / 10); st.parts /= 10; st.econ = 3;
-        if (before >= 1000) migrationNote = (migrationNote ? migrationNote + '<br>' : '') + `능력치·골드·보석·부품 단위가 작아졌습니다. 보유 골드 💰 ${fmt(before)} → 💰 ${fmt(st.gold)} (같은 가치로 변환)`;
+        st.gold = Math.floor(st.gold * killGold(st.maxStage) / killGoldV1(st.maxStage));
+        if (before >= 1000) migrationNote = (migrationNote ? migrationNote + '<br>' : '') + `능력치·골드 단위가 작아졌습니다. 보유 골드 💰 ${fmt(before)} → 💰 ${fmt(st.gold)} (같은 가치로 변환)`;
       }
+      // 경제 v3에서 1/10로 줄였던 골드·보석·부품을 원래 단위로 되돌린다
+      if (data.econ === 3) {
+        st.gold *= 10; st.gems *= 10; st.parts *= 10;
+        migrationNote = (migrationNote ? migrationNote + '<br>' : '') + `골드·보석·부품이 원래 단위로 돌아왔습니다. 보유 골드 💰 ${fmt(st.gold)}`;
+      }
+      st.econ = 4;
       return st;
     }
   } catch (e) { /* 저장소 사용 불가 */ }
@@ -232,7 +235,7 @@ function gearStatVal(g, st) {
 }
 const gearScore = g => g.stats.reduce((a, st) => a + gearStatVal(g, st) * GEAR_STATS[st.k].w, 0);
 const gearStatLine = (g, st) => `${GEAR_STATS[st.k].name} +${(gearStatVal(g, st) * 100).toFixed(1)}%`;
-const sellPrice = g => Math.floor(2 * (g.grade + 1) * Math.pow(1.049, g.ilvl) * (1 + g.plus * 0.3));
+const sellPrice = g => Math.floor(20 * (g.grade + 1) * Math.pow(1.049, g.ilvl) * (1 + g.plus * 0.3));
 
 // ===== 시너지 / 능력치 계산 =====
 const BONUS_KEYS = ['atk', 'hp', 'def', 'crit', 'aspd', 'skill', 'gauge', 'dr', 'ls', 'gold', 'parts'];
@@ -556,9 +559,9 @@ function tick(dt) {
 function towerReward(f) {
   const boss5 = f % 5 === 0, boss10 = f % 10 === 0;
   return {
-    gems: Math.floor(50 + f * 6 + (boss5 ? 250 + f * 5 : 0)),
+    gems: Math.floor(500 + f * 60 + (boss5 ? 2500 + f * 50 : 0)),
     gold: Math.floor(killGold(towerStage(f)) * 75 * (boss5 ? 2 : 1)),
-    parts: Math.floor(3 + f * 0.4 + (boss5 ? 5 : 0)),
+    parts: Math.floor(30 + f * 4 + (boss5 ? 50 : 0)),
     tickets: (f % 2 === 0 ? 1 : 0) + (boss5 ? 1 : 0) + Math.floor(f / 40),
     cards: f % 6 === 0 ? 1 + Math.floor(f / 20) : 0,        // 6층마다 챔피언 카드
     legendCards: boss10 ? (f % 20 === 0 ? 2 : 1) : 0,         // 10층마다 전설 카드 (20층마다 2장)
@@ -752,7 +755,7 @@ function craft(minGrade = 0, free = false) {
 // 장비 강화 (골드 소모, 확률형). +1 이상 올릴수록 비용이 크게 늘고 성공 확률은 낮아진다
 // 비용은 기존 공식의 2배를 최소로 하고, 장비 레벨(=최고 스테이지)의 처치 골드에 비례해 함께 오른다.
 // (기존 공식은 iLv에 정비례라 골드 수입이 지수로 늘어나는 후반에 강화가 너무 쌌다)
-const enhanceCost = g => Math.floor(Math.pow(1.32, g.plus) * (g.grade + 1) * Math.max(60 * (1 + g.ilvl * 0.1), killGold(g.ilvl) * 50));
+const enhanceCost = g => Math.floor(Math.pow(1.32, g.plus) * (g.grade + 1) * Math.max(600 * (1 + g.ilvl * 0.1), killGold(g.ilvl) * 50));
 function defaultEnhanceOdds(plus) {
   const great = 0.04;
   const success = Math.max(0.18, 0.62 - plus * 0.03);
@@ -774,7 +777,7 @@ function enhanceOdds(plus) {
 
 // 큐브: 장착 장비의 등급을 올린다. 실패하면 추가 능력치만 다시 뽑는다 (메이플스토리 큐브와 같은 방식)
 // 등급 상승 확률은 넥슨 오픈API 큐브 기록(레어→에픽, 에픽→유니크, 유니크→레전드리, 레전드리)을 일반→희귀…전설→신화에 대응시킨다
-const CUBE_COST = 3;           // ⚙️ 부품
+const CUBE_COST = 30;            // ⚙️ 부품
 const CUBE_GRADE_KEYS = ['레어', '에픽', '유니크', '레전드리'];
 const CUBE_DEFAULT = [0.15, 0.05, 0.02, 0.008];
 function cubeOdds(grade) {
@@ -1128,7 +1131,7 @@ function offlineReward() {
   const sec = Math.min(8 * 3600, (Date.now() - (S.lastSave || Date.now())) / 1000);
   if (sec < 60) return;
   const s = Math.max(1, S.stage);
-  const gold = killGold(s) * 0.35 * sec, parts = Math.floor(sec * 0.005), gems = Math.floor(sec / 1200);
+  const gold = killGold(s) * 0.35 * sec, parts = Math.floor(sec * 0.05), gems = Math.floor(sec / 600) * 5;
   S.gold += gold; S.parts += parts; S.gems += gems;
   const h = Math.floor(sec / 3600), m = Math.floor(sec % 3600 / 60);
   openModal(`<h3 style="justify-content:center">⏰ 방치 보상</h3><div style="text-align:center">${h}시간 ${m}분 동안 ${stageName(s)}에서 사냥했습니다.<br><br>
@@ -1147,7 +1150,7 @@ if (firstRun) openModal(`<h3 style="justify-content:center">협곡 키우기</h3
   · 전투는 자동! 게이지가 차면 챔피언의 <b>고정 스킬</b>이 자동 발동됩니다.<br>
   · 💰 골드로 레벨업, 🎲 소환의 중복 카드로 ★성급 강화.<br>
   · 탑/정글/미드/원딜/서포터를 모두 편성하면 팀 시너지 보너스! 지역·조합 시너지도 확인해 보세요.<br>
-  · 시작 선물: 💎 300 (소환 30회) · 🎫 소환권 3장</div><button class="btn big" id="closeBtn" style="width:100%;margin-top:12px">시작하기</button>`);
+  · 시작 선물: 💎 3,000 (소환 30회) · 🎫 소환권 3장</div><button class="btn big" id="closeBtn" style="width:100%;margin-top:12px">시작하기</button>`);
 else if (migrationNote) openModal(`<h3 style="justify-content:center">🔧 업데이트 안내</h3><div style="text-align:center;line-height:1.7">${migrationNote}</div><button class="btn big" id="closeBtn" style="width:100%;margin-top:12px">확인</button>`);
 else offlineReward();
 

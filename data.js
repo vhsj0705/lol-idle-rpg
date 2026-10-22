@@ -41,15 +41,19 @@ const RARITY = [
 // 문자열 해시로 등급을 결정 (고정): 전설 ~12%, 영웅 ~23%, 희귀 ~32%, 일반 ~33%
 function hashStr(s) { let h = 2166136261; for (const c of s) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619); } return (h >>> 0) / 4294967296; }
 
+// 마나: 총량 100 고정. 이전(위력 1.0 = 마나 100) 대비 비용과 회복량을 같은 비율(0.4)로 줄여서 시전 빈도는 그대로다
+const MANA_MAX = 100, MANA_SCALE = 0.4;
+const manaCost = pw => Math.round(pw * 100 * MANA_SCALE);
 const CHAMPS = CHAMP_RAW.split(';').map(row => {
   const [id, name, pos, tag, key, skill, eff] = row.split(',');
   const h = hashStr(id + 'rarity');
   const rarity = h < 0.12 ? 3 : h < 0.35 ? 2 : h < 0.67 ? 1 : 0;
-  // 스킬 위력: 궁극기(R) ×1.9 기준에 챔피언마다 ×0.75~1.3 차이. 마나 비용은 위력에 비례 (위력 1.0 = 마나 100)
+  // 스킬 위력: 궁극기(R) ×1.9 기준에 챔피언마다 ×0.75~1.3 차이.
+  // 마나 총량은 모든 챔피언 100으로 고정하고, 스킬 마나 비용은 위력에 비례한다 (위력 1.0 = 마나 40, 가장 센 R도 100 이하)
   const pw = Math.round((key === 'R' ? 1.9 : 1.0) * (0.75 + 0.55 * hashStr(id + 'pw')) * 100) / 100;
-  const mana = Math.round(pw * 100 / 5) * 5;
-  // 마나 회복 속도: 평타 1회당 14~26 (챔피언마다 다름), 초당 자연 회복은 그 1/8
-  const manaGain = Math.round((14 + 12 * hashStr(id + 'mana')) * 10) / 10;
+  const mana = manaCost(pw);
+  // 마나 회복 속도: 평타 1회당 5.6~10.4 (챔피언마다 다름), 초당 자연 회복은 그 1/8
+  const manaGain = Math.round((14 + 12 * hashStr(id + 'mana')) * MANA_SCALE * 10) / 10;
   return { id, name, pos, tag, key, skill, eff, rarity, pw, mana, manaGain };
 });
 const CHAMP_BY_ID = Object.fromEntries(CHAMPS.map(c => [c.id, c]));
@@ -66,7 +70,7 @@ for (const c of CHAMPS) {
   const rest = 'QWER'.split('').filter(k => k !== c.key).sort((a, b) => hashStr(c.id + a) - hashStr(c.id + b)).slice(0, c.rarity);
   c.skills = [first, ...rest.map(key => {
     const effs = EXTRA_EFF[c.tag], eff = effs[Math.floor(hashStr(c.id + key + 'eff') * effs.length)], pw = skillPower(c.id, key);
-    return { key, name: (SPELL_NAMES[c.id] || [])['QWER'.indexOf(key)] || key + ' 스킬', eff, pw, mana: Math.round(pw * 100 / 5) * 5 };
+    return { key, name: (SPELL_NAMES[c.id] || [])['QWER'.indexOf(key)] || key + ' 스킬', eff, pw, mana: manaCost(pw) };
   })].sort((a, b) => 'QWER'.indexOf(a.key) - 'QWER'.indexOf(b.key));
 }
 

@@ -289,7 +289,7 @@ const field = { allies: $('#allies'), enemies: $('#enemies') };
 
 function makeAlly(id, b) {
   const c = CHAMP_BY_ID[id], st = calcStats(id, b);
-  return { side: 'a', id, c, ...st, maxHp: st.hp, hp: st.hp, shield: 0, si: randSkill(c), gauge: rand(0, c.skills[0].mana * 0.4), timer: rand(0, 0.5), stun: 0, buffT: 0, buffMul: 0, dead: false };
+  return { side: 'a', id, c, ...st, maxHp: st.hp, hp: st.hp, shield: 0, si: randSkill(c), gauge: rand(0, MANA_MAX * 0.3), timer: rand(0, 0.5), stun: 0, buffT: 0, buffMul: 0, dead: false };
 }
 function makeEnemy(m, s, kind) {
   const e = enemyStat(s), k = KIND[kind];
@@ -301,7 +301,7 @@ function makeEnemyChamp(c, s) {
   const u = makeEnemy([c.name, '⚔️'], s, 'champ'), base = BASE[c.pos], tm = TAGMOD[c.tag];
   const hpM = base.hp * tm.hp / 330, atkM = base.atk * tm.atk / 28;
   Object.assign(u, { c, champId: c.id, maxHp: u.maxHp * hpM, hp: u.maxHp * hpM, atk: u.atk * atkM, def: u.def * (base.def / 18),
-    aspd: base.aspd * 0.85, crit: base.crit + tm.crit, skill: tm.skill, gaugeRate: tm.gauge, si: randSkill(c), gauge: rand(0, c.skills[0].mana * 0.3) });
+    aspd: base.aspd * 0.85, crit: base.crit + tm.crit, skill: tm.skill, gaugeRate: tm.gauge, si: randSkill(c), gauge: rand(0, MANA_MAX * 0.2) });
   return u;
 }
 // 챕터 지역(데마시아, 녹서스 …)의 챔피언 중에서 고른다
@@ -349,18 +349,18 @@ function unitEl(u) {
   const d = document.createElement('div');
   d.className = `unit ${u.side === 'a' ? 'ally' : 'enemy'}${u.kind === 'boss' ? ' boss' : ''}${u.champId ? ' echamp' : ''}`;
   if (u.champId) {
-    d.innerHTML = `<div class="info" style="text-align:right"><div class="nm">⚔️ ${u.name}</div><div class="bar hp"><i></i><span class="sh"></span><em class="bt"></em></div><div class="bar gauge"><i></i><em class="bt"></em></div></div>
+    d.innerHTML = `<div class="info" style="text-align:right"><div class="nm">⚔️ ${u.name}</div><div class="bar hp"><i></i><span class="sh"></span><em class="bt"></em></div><div class="bar gauge"><i></i><b class="mk"></b><em class="bt"></em></div></div>
       <div class="pic" style="background-image:url(${img(u.champId)})"><span class="badge">${POS[u.c.pos].icon}</span></div>`;
   } else if (u.side === 'a') {
     const o = S.owned[u.id];
     d.innerHTML = `<div class="pic" style="background-image:url(${img(u.id)})"><span class="badge">${POS[u.c.pos].icon}${o.lv}</span></div>
       <div class="info"><div class="nm">${u.c.name} <span style="color:#ffd84a">${'★'.repeat(o.star)}</span></div>
-      <div class="bar hp"><i></i><span class="sh"></span><em class="bt"></em></div><div class="bar gauge"><i></i><em class="bt"></em></div></div>`;
+      <div class="bar hp"><i></i><span class="sh"></span><em class="bt"></em></div><div class="bar gauge"><i></i><b class="mk"></b><em class="bt"></em></div></div>`;
   } else {
     d.innerHTML = `<div class="info" style="text-align:right"><div class="nm">${u.name}</div><div class="bar hp"><i></i><span class="sh"></span><em class="bt"></em></div></div><div class="pic">${monsterPic(u)}</div>`;
   }
   u.el = d; u.hpEl = d.querySelector('.hp i'); u.shEl = d.querySelector('.sh'); u.gEl = d.querySelector('.gauge i'); u.gBar = d.querySelector('.bar.gauge');
-  u.hpTx = d.querySelector('.hp .bt'); u.gTx = d.querySelector('.gauge .bt');
+  u.hpTx = d.querySelector('.hp .bt'); u.gTx = d.querySelector('.gauge .bt'); u.gMk = d.querySelector('.gauge .mk');
   return d;
 }
 function renderField() {
@@ -385,7 +385,12 @@ function paintUnits() {
     u.hpEl.style.width = Math.max(0, u.hp / u.maxHp * 100) + '%';
     u.shEl.style.width = Math.min(100, u.shield / u.maxHp * 100) + '%';
     u.hpTx.textContent = `${fmt(Math.max(0, u.hp))}/${fmt(u.maxHp)}`;
-    if (u.gEl) { const mx = curSkill(u).mana; u.gEl.style.width = Math.min(100, u.gauge / mx * 100) + '%'; u.gBar.classList.toggle('full', u.gauge >= mx * 0.9); u.gTx.textContent = `${Math.floor(u.gauge)}/${mx}`; }
+    if (u.gEl) {
+      // 마나 바는 총량 100 기준, 세로선은 다음에 쓸 스킬의 마나 비용 위치
+      const cost = curSkill(u).mana;
+      u.gEl.style.width = Math.min(100, u.gauge / MANA_MAX * 100) + '%'; u.gBar.classList.toggle('full', u.gauge >= cost);
+      u.gMk.style.left = cost / MANA_MAX * 100 + '%'; u.gTx.textContent = `${Math.floor(u.gauge)}/${MANA_MAX}`;
+    }
     u.el.classList.toggle('dead', u.dead);
     u.el.classList.toggle('stun', u.stun > 0 && !u.dead);
     u.el.classList.toggle('buff', u.buffT > 0 && !u.dead);
@@ -440,7 +445,7 @@ const curSkill = u => u.c.skills[u.si];
 function tryCast(u) {
   const sk = curSkill(u);
   if (u.gauge < sk.mana) return false;
-  u.gauge = 0; u.si = randSkill(u.c); castSkill(u, sk);
+  u.gauge -= sk.mana; u.si = randSkill(u.c); castSkill(u, sk);
   return true;
 }
 function castSkill(u, sk) {
@@ -482,7 +487,7 @@ function tick(dt) {
     if (u.dead) continue;
     if (u.buffT > 0) { u.buffT -= dt; if (u.buffT <= 0) u.buffMul = 0; }
     if (u.stun > 0) { u.stun -= dt; continue; }
-    u.gauge = Math.min(curSkill(u).mana, u.gauge + u.c.manaGain * MANA_REGEN * u.gaugeRate * dt);
+    u.gauge = Math.min(MANA_MAX, u.gauge + u.c.manaGain * MANA_REGEN * u.gaugeRate * dt);
     u.timer += dt;
     const foes = alive(B.enemies); if (!foes.length) break;
     if (tryCast(u)) continue;
@@ -492,7 +497,7 @@ function tick(dt) {
       const tgt = (u.c.pos === 'A' || u.c.pos === 'M') ? foes.reduce((a, e) => e.hp < a.hp ? e : a) : foes[0];
       const crit = Math.random() < u.crit;
       dealDamage(u, tgt, u.atk * (1 + u.buffMul) * (crit ? 1.75 : 1), crit ? 'crit' : '');
-      u.gauge = Math.min(curSkill(u).mana, u.gauge + u.c.manaGain * u.gaugeRate);
+      u.gauge = Math.min(MANA_MAX, u.gauge + u.c.manaGain * u.gaugeRate);
       flash(u, 'atk', 100);
     }
   }
@@ -504,13 +509,13 @@ function tick(dt) {
     e.timer += dt;
     if (e.champId) {
       // 적 챔피언: 아군과 같은 방식으로 마나를 모아 스킬을 쓴다
-      e.gauge = Math.min(curSkill(e).mana, e.gauge + e.c.manaGain * MANA_REGEN * e.gaugeRate * dt);
+      e.gauge = Math.min(MANA_MAX, e.gauge + e.c.manaGain * MANA_REGEN * e.gaugeRate * dt);
       if (tryCast(e)) continue;
       if (e.timer >= 1 / (e.aspd * (1 + e.buffMul))) {
         e.timer = 0; flash(e, 'atk');
         const crit = Math.random() < e.crit;
         dealDamage(e, allyTarget(B.allies), e.atk * (1 + e.buffMul) * (crit ? 1.75 : 1), 'dmg');
-        e.gauge = Math.min(curSkill(e).mana, e.gauge + e.c.manaGain * e.gaugeRate);
+        e.gauge = Math.min(MANA_MAX, e.gauge + e.c.manaGain * e.gaugeRate);
       }
       continue;
     }
@@ -960,7 +965,7 @@ function showDetail(id) {
     ${c.skills.map(sk => `<div class="skill" style="margin-bottom:6px"><img data-sp="${sk.key}" src="" alt="" style="visibility:hidden"><div>
       <div><span class="k">${sk.key}</span><b>${sk.name}</b> <span class="sub">${EFFECTS[sk.eff].icon} ${EFFECTS[sk.eff].name}${sk.key === c.key ? ' · 고정 스킬' : ''}</span></div>
       <div class="eff">▶ ${skillEffectText(c, sk)}</div>
-      <div class="sub" style="margin-top:3px">스킬 위력 ×${sk.pw.toFixed(2)} · 🔷 마나 ${sk.mana}</div>
+      <div class="sub" style="margin-top:3px">스킬 위력 ×${sk.pw.toFixed(2)} · 🔷 마나 ${sk.mana} / ${MANA_MAX}</div>
       <p data-spd="${sk.key}">원작 스킬 설명 불러오는 중…</p></div></div>`).join('')}
     ${o ? `<div class="box" style="margin-top:10px">
       <div class="row"><div style="flex:1">레벨업 비용 💰 <b>${o.lv >= cap ? '-' : fmt(levelCost(o.lv, c.rarity))}</b></div>

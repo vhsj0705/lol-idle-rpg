@@ -160,7 +160,7 @@ const SAVE_KEY = 'lolIdleSave_v1';
 let S;
 function newState() {
   const st = { gold: 300, gems: 3000, parts: 20, tickets: 3, stage: 1, maxStage: 1, tower: 1, owned: {}, deck: [], gear: Object.fromEntries(GEAR_KEYS.map(k => [k, null])),
-    pity: 0, pulls: 0, auto: true, speed: 1, autoCraft: false, autoTower: false, econ: 2, lastSave: Date.now() };
+    pity: 0, pulls: 0, auto: true, speed: 1, autoCraft: false, autoTower: false, autoPull: false, econ: 2, lastSave: Date.now() };
   // 스타터: 포지션별 일반 등급 챔피언 1명씩
   for (const p of Object.keys(POS)) {
     const c = CHAMPS.find(c => c.pos === p && c.rarity === 0) || CHAMPS.find(c => c.pos === p);
@@ -644,7 +644,7 @@ function upgradeAll() {
     }
   }
   refreshAllyStats(); save();
-  toast(stars || lvs ? `모두 강화 완료: ★ 강화 ${stars}회 · 레벨 +${lvs}` : '진행할 수 있는 강화가 없습니다 (골드/카드 부족)');
+  return stars || lvs ? `모두 강화 완료: ★ 강화 ${stars}회 · 레벨 +${lvs}` : '진행할 수 있는 강화가 없습니다 (골드/카드 부족)';
 }
 
 // ===== 소환 =====
@@ -769,7 +769,7 @@ function heroesHTML() {
   list.sort((a, c) => (S.deck.includes(c.id) - S.deck.includes(a.id)) || (!!S.owned[c.id] - !!S.owned[a.id]) || (sv.get(c.id) - sv.get(a.id)));
   const chips = (arr, cur, attr) => arr.map(([k, n]) => `<button class="chip ${String(cur) === String(k) ? 'on' : ''}" data-${attr}="${k}">${n}</button>`).join('');
   return `<h3>챔피언 도감 <span class="sub">보유 ${owned} / ${CHAMPS.length}</span></h3>
-    <div class="row" style="margin-bottom:8px"><button class="btn teal big" id="upAll">⬆️ 모두 강화 (★강화 → 레벨업)</button></div>
+    <div class="row" style="margin-bottom:8px"><button class="btn teal big" id="upAll">⬆️ 모두 강화 (★강화 → 레벨업 → 자동 편성)</button></div>
     <div class="filters">${chips([['all', '전체'], ...Object.values(POS).map(x => [x.key, x.icon + ' ' + x.name + ' ' + CHAMPS.filter(c => c.pos === x.key).length])], heroFilter, 'f')}</div>
     <div class="filters">${chips([['all', '모든 등급'], ...RARITY.map(r => [r.key, `<span style="color:${r.color}">●</span> ${r.name} ${CHAMPS.filter(c => c.rarity === r.key).length}`])], rarFilter, 'rf')}</div>
     <div class="filters"><span class="sub" style="align-self:center">정렬</span>${chips(Object.entries(SORTS), heroSort, 'sort')}<span class="sub" style="align-self:center">· 출전 중인 챔피언이 항상 맨 앞</span></div>
@@ -812,7 +812,8 @@ function gachaHTML() {
   const featured = CHAMPS.filter(c => c.rarity === 3).slice(0, 5);
   return `<div class="banner-art"><div class="t">협곡 소환</div><div class="sub">전설 확정까지 <b style="color:#ffb52e">${PITY - S.pity}</b>회 · 총 ${S.pulls}회 소환</div>
         <div class="imgs">${featured.map(c => `<img src="${img(c.id)}">`).join('')}</div></div>
-      <div class="row"><button class="btn big" id="pull1">1회 소환<br>💎 ${PULL_COST}</button><button class="btn teal big" id="pull10">10회 소환<br>💎 ${PULL10_COST}</button></div>
+      <div class="row"><button class="btn big" id="pull1">1회 소환<br>💎 ${PULL_COST}</button><button class="btn teal big" id="pull10">10회 소환<br>💎 ${PULL10_COST}</button>
+        <button class="btn big ${S.autoPull ? 'teal on-pulse' : ''}" id="autoPullBtn">자동 소환 ${S.autoPull ? 'ON' : 'OFF'}<br><span class="sub">${AUTO_PULL_SEC}초마다 1회</span></button></div>
       <div class="row" style="margin-top:8px"><button class="btn big" id="pullTk" ${S.tickets < 1 ? 'disabled' : ''}>🎫 소환권 1회<br><span class="sub">보유 ${S.tickets}장</span></button><button class="btn teal big" id="pullTkAll" ${S.tickets < 1 ? 'disabled' : ''}>🎫 모두 사용<br><span class="sub">${S.tickets}회 한 번에 소환</span></button></div>
       <div class="box" style="margin-top:10px"><div class="rates">${RARITY.map(r => `<span style="color:${r.color}">${r.name} ${r.rate}% (${CHAMPS.filter(c => c.rarity === r.key).length}종)</span>`).join('')}</div>
         <div class="sub" style="margin-top:6px">· 10회 소환 시 영웅 이상 1회 보장 · ${PITY}회 내 전설 확정<br>· 중복 획득 시 성급(★) 강화 재료가 됩니다 · ★6 이후 중복은 골드로 전환<br>· 🎫 소환권은 스테이지 보스 첫 클리어, 공허의 탑에서 얻습니다</div></div>
@@ -920,7 +921,7 @@ function toggleDeck(id) {
   else { if (S.deck.length >= MAX_DECK) return toast(`편성은 최대 ${MAX_DECK}명입니다`); S.deck.push(id); }
   save(); startStage(); refreshPanel();
 }
-function autoDeck() {
+function autoDeck(msg = '자동 편성 완료') {
   const owned = CHAMPS.filter(c => S.owned[c.id]), b = bonuses();
   const pw = c => powerOf(calcStats(c.id, b));
   const deck = [];
@@ -929,12 +930,31 @@ function autoDeck() {
     if (best) deck.push(best.id);
   }
   for (const c of owned.sort((a, c) => pw(c) - pw(a))) if (deck.length < MAX_DECK && !deck.includes(c.id)) deck.push(c.id);
-  S.deck = deck; save(); startStage(); refreshPanel(); toast('자동 편성 완료');
+  S.deck = deck; save(); startStage(); refreshPanel(); toast(msg);
 }
 
 // 전설 소환 연출
 let fxQ = [], fxT;
-function showLegendFx(list) { fxQ = list.slice(); nextFx(); }
+function showLegendFx(list) {
+  // 연출 중이면 뒤에 이어 붙인다 (자동 소환 중에도 전설이 빠지지 않도록)
+  if (!$('#fx').classList.contains('hidden')) { fxQ.push(...list); return; }
+  fxQ = list.slice(); nextFx();
+}
+
+// 자동 소환: 한 번에 다 쓰지 않고 일정 간격으로 1회씩 소환한다 (소환권 → 보석 순서로 사용)
+const AUTO_PULL_SEC = 1.5;
+function autoPullStep() {
+  const useTicket = S.tickets > 0;
+  if (!useTicket && S.gems < PULL_COST) {
+    S.autoPull = false; toast('💎 보석이 부족해 자동 소환을 멈췄습니다');
+    if (tab === 'gacha') refreshPanel();
+    return;
+  }
+  const r = gacha(1, useTicket); if (!r) return;
+  lastPull = [...r, ...(lastPull || [])].slice(0, 30);   // 최근 30회 결과 (최신이 앞)
+  const legends = r.filter(x => x.r === 3); if (legends.length) showLegendFx(legends);
+  if (tab === 'gacha') refreshPanel();
+}
 function nextFx() {
   clearTimeout(fxT);
   const fx = $('#fx'), x = fxQ.shift();
@@ -976,7 +996,11 @@ $('#panel').onclick = e => {
   }
   const t = e.target.closest('button'); if (!t) return;
   if (t.id === 'autoDeck') autoDeck();
-  if (t.id === 'upAll') { upgradeAll(); refreshPanel(); }
+  if (t.id === 'upAll') autoDeck(upgradeAll() + ' · 자동 편성 완료');   // 강화 후 전투력 기준으로 다시 편성
+  if (t.id === 'autoPullBtn') {
+    S.autoPull = !S.autoPull; pullT = 0; save(); refreshPanel();
+    toast(S.autoPull ? `🎲 자동 소환 시작 (${AUTO_PULL_SEC}초마다 1회, 소환권 → 보석 순)` : '🎲 자동 소환 끔');
+  }
   if (t.id === 'synToggle') { showAllSyn = !showAllSyn; refreshPanel(); }
   if (t.id === 'pull1' || t.id === 'pull10' || t.id === 'pullTk' || t.id === 'pullTkAll') {
     const r = t.id === 'pullTkAll' ? gacha(S.tickets, true) : gacha(t.id === 'pull10' ? 10 : 1, t.id === 'pullTk');
@@ -1021,13 +1045,14 @@ if (firstRun) openModal(`<h3 style="justify-content:center">협곡 키우기</h3
 else if (migrationNote) openModal(`<h3 style="justify-content:center">🔧 업데이트 안내</h3><div style="text-align:center;line-height:1.7">${migrationNote}</div><button class="btn big" id="closeBtn" style="width:100%;margin-top:12px">확인</button>`);
 else offlineReward();
 
-let last = performance.now(), saveT = 0, craftT = 0, uiT = 0;
+let last = performance.now(), saveT = 0, craftT = 0, uiT = 0, pullT = 0;
 setInterval(() => {
   const now = performance.now(), real = Math.min(0.25, (now - last) / 1000); last = now;
   const dt = real * S.speed;
   tick(dt);
   paintUnits();
-  saveT += real; craftT += real; uiT += real;
+  saveT += real; craftT += real; uiT += real; pullT += real;
+  if (S.autoPull && pullT >= AUTO_PULL_SEC) { pullT = 0; autoPullStep(); }
   if (S.autoCraft && craftT > 0.6) {
     craftT = 0;
     const r = craft();

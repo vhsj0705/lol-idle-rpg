@@ -156,6 +156,10 @@ h3 { margin: 6px 0 8px; color: var(--gold); font-size: 15px; display: flex; just
 .gi .gimg { border: 1px solid #ffffff33; }
 .timg { width: 16px; height: 16px; vertical-align: -3px; filter: drop-shadow(0 0 1px #000); }
 
+/* 자동 소환 진행 중 표시 */
+.btn.on-pulse { animation: onPulse 1.5s ease-in-out infinite; }
+@keyframes onPulse { 50% { box-shadow: 0 0 12px var(--teal); } }
+
 /* 챔피언 대결 */
 .champtag { font-size: 11px; color: #ff6b6b; border: 1px solid #ff6b6b; border-radius: 8px; padding: 0 5px; }
 .unit.echamp { border-color: #ff6b6b88; background: #3a0b1655; }

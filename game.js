@@ -55,14 +55,18 @@ const MANA_REGEN = 1 / 8;                         // 초당 자연 회복 = 평�
 // 소환
 const PULL_COST = 100, PULL10_COST = 1000, PITY = 70;
 
-// 장비: 6칸, 등급이 높을수록 능력치 종류(개수)와 수치가 늘어난다
+// 장비: 6칸, 등급이 높을수록 능력치 종류(개수)와 수치가 늘어난다.
+// 챔피언처럼 등급마다 수치가 2배씩 차이 나고, 같은 장비 레벨(iLv)이면 +25까지 강화해도(최대 ×1.625) 다음 등급 +0을 넘지 못한다.
+// (옵션 수치의 무작위 편차 ±10%를 포함해도 최대 1.79배 < 다음 등급 최소 1.8배)
 const GEAR_GRADES = [
-  { name: '일반', color: '#9aa4b1', rate: 50, base: 8, n: 1 },
-  { name: '희귀', color: '#4aa8ff', rate: 30, base: 16, n: 2 },
-  { name: '영웅', color: '#b46cff', rate: 14, base: 28, n: 3 },
-  { name: '전설', color: '#ffb52e', rate: 5, base: 45, n: 4 },
-  { name: '신화', color: '#ff4f6d', rate: 1, base: 70, n: 5 },
+  { name: '일반', color: '#9aa4b1', rate: 50, base: 2.1875, n: 1 },
+  { name: '희귀', color: '#4aa8ff', rate: 30, base: 4.375, n: 2 },
+  { name: '영웅', color: '#b46cff', rate: 14, base: 8.75, n: 3 },
+  { name: '전설', color: '#ffb52e', rate: 5, base: 17.5, n: 4 },
+  { name: '신화', color: '#ff4f6d', rate: 1, base: 35, n: 5 },
 ];
+const GEAR_ILVL_GROWTH = 0.0125;   // 장비 레벨 1당 +1.25% (이전의 1/2)
+const GEAR_PLUS_GROWTH = 0.025;    // 강화 1단계당 +2.5%
 // coef: 수치 계수, w: 장비 점수 가중치(좋은 장비 비교용)
 const GEAR_STATS = {
   atk: { name: '공격력', coef: 1, w: 1 }, hp: { name: '체력', coef: 1, w: 0.8 }, def: { name: '방어력', coef: 1, w: 0.8 },
@@ -205,7 +209,7 @@ function save() { S.lastSave = Date.now(); try { localStorage.setItem(SAVE_KEY, 
 const gearMainOf = g => GEAR_SLOTS[g.slot].main;
 function gearStatVal(g, st) {
   const isMain = st.k === gearMainOf(g);
-  return GEAR_GRADES[g.grade].base * GEAR_STATS[st.k].coef * (isMain ? 1 : 0.65) * st.r * (1 + g.ilvl * 0.025) * (1 + g.plus * 0.12) / 100;
+  return GEAR_GRADES[g.grade].base * GEAR_STATS[st.k].coef * (isMain ? 1 : 0.65) * st.r * (1 + g.ilvl * GEAR_ILVL_GROWTH) * (1 + g.plus * GEAR_PLUS_GROWTH) / 100;
 }
 const gearScore = g => g.stats.reduce((a, st) => a + gearStatVal(g, st) * GEAR_STATS[st.k].w, 0);
 const gearStatLine = (g, st) => `${GEAR_STATS[st.k].name} +${(gearStatVal(g, st) * 100).toFixed(1)}%`;
@@ -882,7 +886,7 @@ function forgeDetailHTML() {
   const e = lastEnh && lastEnh.slot === forgeSel ? ENH_MSG[lastEnh.type] : null;
   return `<div style="font-weight:700;color:${GEAR_GRADES[g.grade].color}">${gearIcon(forgeSel, g.grade, 'gimg sm')} [${GEAR_GRADES[g.grade].name}] ${gearName(g)} <span style="color:#ffd84a">+${g.plus}/${MAX_PLUS}</span></div>
     <div class="gstats">${g.stats.map(st => `<div>${st.k === s.main ? '⭐ ' : '· '}${gearStatLine(g, st)}</div>`).join('')}</div>
-    <div class="sub" style="margin:6px 0">성공 시 능력치 +12%씩 (강화 단계당) · 판매가 💰 ${fmt(sellPrice(g))}</div>
+    <div class="sub" style="margin:6px 0">강화 단계당 능력치 +${GEAR_PLUS_GROWTH * 100}% · 최대 강화해도 다음 등급보다 약함 · 판매가 💰 ${fmt(sellPrice(g))}</div>
     ${g.plus >= MAX_PLUS ? '<div class="sub">최대 강화입니다</div>' : `<div class="odds"><span style="color:#ffd84a">대성공 ${pc(o.great)} (+2~5)</span><span style="color:#6ee87f">성공 ${pc(o.success)} (+1)</span><span>실패 ${pc(o.fail)}</span>${o.minus ? `<span style="color:#ff9c3b">하락 ${pc(o.minus)} (-1)</span>` : ''}${o.destroy ? `<span style="color:#ff4f6d">파괴 ${pc(o.destroy)}</span>` : ''}</div>
       <div class="sub" style="margin-top:4px">${probSrcText(o)}</div>
       <button class="btn teal big" id="enhBtn" style="width:100%;margin-top:8px">강화 💰 ${fmt(enhanceCost(g))}</button>`}

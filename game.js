@@ -110,7 +110,10 @@ const stageName = s => {
   const loop = Math.floor(ch / CHAPTERS.length);
   return `${CHAPTERS[ch % CHAPTERS.length]}${loop ? ` (심연 ${loop})` : ''} ${ch + 1}-${sub}`;
 };
-const enemyStat = s => ({ hp: 15 * Math.pow(1.065, s - 1), atk: 1.6 * Math.pow(1.056, s - 1), def: 5 + s * 0.6 });
+// 후반(심연, 100스테이지 이후)에는 적 능력치가 스테이지당 절반 속도(로그 기준)로 오른다. 골드 등 재화는 그대로다
+const LATE_STAGE = 100, LATE_GROWTH = 0.5;
+const growthStage = s => s <= LATE_STAGE ? s : LATE_STAGE + (s - LATE_STAGE) * LATE_GROWTH;
+const enemyStat = s => ({ hp: 15 * Math.pow(1.065, growthStage(s) - 1), atk: 1.6 * Math.pow(1.056, growthStage(s) - 1), def: 5 + s * 0.6 });
 const killGold = s => 0.5 * Math.pow(1.058, s - 1);
 const killGoldV1 = s => 5 * Math.pow(1.12, s - 1);   // 경제 v1 (저장 데이터 변환용)
 const towerStage = f => Math.round(4 + f * 2.4);

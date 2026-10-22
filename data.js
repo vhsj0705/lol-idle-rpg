@@ -28,12 +28,14 @@ const EFFECTS = {
   b: { name: '강화', icon: '🔥' },
 };
 // mult: 기본 배율, lv: 레벨당 능력치 성장(복리), star: ★ 1단계당 능력치 배율
-// 기준: 일반 ★6 Lv130 ≈ 전설 ★3 Lv70 (둘 다 기본의 약 43배)
+// 기준: 등급마다 기본 배율 6배. 한 등급 안의 최대 성장(Lv1 ★1 → Lv130 ★6)은 약 2.88배이고,
+// 포지션·역할군에 따른 챔피언 간 차이(최대 약 1.6배)를 더해도 6배보다 작다.
+// 그래서 아무리 강화해도 다음 등급의 Lv1 ★1 챔피언(가장 약한 챔피언 포함)의 전투력을 넘지 못한다 (같은 강화 단계끼리는 약 5~6배 차이)
 const RARITY = [
-  { key: 0, name: '일반', color: '#9aa4b1', mult: 1.0, lv: 1.025, star: 1.12, rate: 55 },
-  { key: 1, name: '희귀', color: '#4aa8ff', mult: 1.14, lv: 1.031, star: 1.16, rate: 30 },
-  { key: 2, name: '영웅', color: '#b46cff', mult: 1.3, lv: 1.037, star: 1.206, rate: 12 },
-  { key: 3, name: '전설', color: '#ffb52e', mult: 1.52, lv: 1.043, star: 1.25, rate: 3 },
+  { key: 0, name: '일반', color: '#9aa4b1', mult: 1, lv: 1.0056, star: 1.07, rate: 55 },
+  { key: 1, name: '희귀', color: '#4aa8ff', mult: 6, lv: 1.0056, star: 1.07, rate: 30 },
+  { key: 2, name: '영웅', color: '#b46cff', mult: 36, lv: 1.0056, star: 1.07, rate: 12 },
+  { key: 3, name: '전설', color: '#ffb52e', mult: 216, lv: 1.0056, star: 1.07, rate: 3 },
 ];
 
 // 문자열 해시로 등급을 결정 (고정): 전설 ~12%, 영웅 ~23%, 희귀 ~32%, 일반 ~33%

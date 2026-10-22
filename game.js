@@ -120,8 +120,8 @@ const firstClearTickets = s => s % 20 === 0 ? 1 + Math.floor(s / 60) : 0;   // �
 
 // ===== 권장 전투력 =====
 // 해당 전투에서 만나는 적의 총 체력과 초당 피해량으로 위협도를 구하고,
-// 전투 시뮬레이션에서 승률 약 83%가 되는 전투력에 맞춰 보정한다 (권장 = 5.6 × 위협도^0.9, 탑은 ×1.38)
-const REC_A = 5.6, REC_EXP = 0.9, REC_TOWER = 1.38;
+// 전투 시뮬레이션에서 승률 약 83%가 되는 전투력에 맞춰 보정한다 (권장 = 5.09 × 위협도^0.81, 탑은 ×1.57)
+const REC_A = 5.09, REC_EXP = 0.81, REC_TOWER = 1.57;
 function waveKinds(s, wave, waves) {
   const sub = (s - 1) % 10 + 1;
   if (wave < waves) return Array(3 + (s > 20 ? 1 : 0)).fill('mob');
@@ -138,8 +138,9 @@ function threat(waveList, s) {
   return Math.sqrt(hp * dps);
 }
 const recFromThreat = t => REC_A * Math.pow(t, REC_EXP);
-const REC_CHAMP = 1.3;  // 챔피언 대결은 적이 스킬도 쓰므로 위협도에 추가 보정 (시뮬레이션 기준)
-function recPowerStage(s) { return recFromThreat(threat([waveKinds(s, 1, 3), waveKinds(s, 2, 3), waveKinds(s, 3, 3)], s)) * (isChampStage(s) ? REC_CHAMP : 1); }
+// 챔피언 대결은 적이 스킬도 쓰므로 적 챔피언 수(3/4/5명)에 따라 추가 보정 (시뮬레이션 기준)
+const REC_CHAMP = { 3: 1.4, 4: 1.7, 5: 2.0 };
+function recPowerStage(s) { return recFromThreat(threat([waveKinds(s, 1, 3), waveKinds(s, 2, 3), waveKinds(s, 3, 3)], s)) * (isChampStage(s) ? REC_CHAMP[champStageCount(s)] : 1); }
 function recPowerTower(f) { return recFromThreat(threat([['elite', 'boss', 'elite']], towerStage(f))) * REC_TOWER; }
 // 내 전투력 / 권장 전투력 → 성공 가능성 표시
 function odds(power, rec) {

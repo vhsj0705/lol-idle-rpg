@@ -29,9 +29,9 @@ const EFFECTS = {
 };
 const RARITY = [
   { key: 0, name: '일반', color: '#9aa4b1', mult: 1.0, rate: 55 },
-  { key: 1, name: '희귀', color: '#4aa8ff', mult: 1.3, rate: 30 },
-  { key: 2, name: '영웅', color: '#b46cff', mult: 1.7, rate: 12 },
-  { key: 3, name: '전설', color: '#ffb52e', mult: 2.3, rate: 3 },
+  { key: 1, name: '희귀', color: '#4aa8ff', mult: 1.14, rate: 30 },
+  { key: 2, name: '영웅', color: '#b46cff', mult: 1.3, rate: 12 },
+  { key: 3, name: '전설', color: '#ffb52e', mult: 1.52, rate: 3 },
 ];
 
 // 문자열 해시로 등급을 결정 (고정): 전설 ~12%, 영웅 ~23%, 희귀 ~32%, 일반 ~33%

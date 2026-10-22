@@ -48,7 +48,8 @@ const RARITY_COST = [1, 2, 3.5, 5];
 const levelCost = (lv, rarity) => Math.floor(20 * Math.pow(1.068, lv - 1) * RARITY_COST[rarity]);
 // 성급 강화: 중복 카드 + 골드 (성급이 오를수록 약 1.8배씩)
 const starCost = (star, rarity) => Math.floor(200 * Math.pow(1.79, star - 1) * RARITY_COST[rarity]);
-// 스킬: 챔피언마다 위력(c.pw)과 마나 비용(c.mana, 위력에 비례), 마나 회복 속도(c.manaGain)가 다르다
+// 스킬: 챔피언마다 위력(pw)과 마나 비용(mana, 위력에 비례), 마나 회복 속도(c.manaGain)가 다르다.
+// 등급이 높을수록 스킬이 많고(c.skills: 일반 1 ~ 전설 4개), 전투에서는 Q→W→E→R 순서로 돌아가며 쓴다
 const MANA_REGEN = 1 / 8;                         // 초당 자연 회복 = 평타 1회 회복량 × 1/8
 
 // 소환
@@ -266,10 +267,10 @@ const powerOf = st => st.atk * st.aspd * (1 + st.crit * 0.75) * 6 * (1 + (st.ski
 function teamPower() { const b = bonuses(); return S.deck.reduce((a, id) => a + powerOf(calcStats(id, b)), 0); }
 
 // 스킬 설명 (게임 내 효과)
-function skillEffectText(c) {
-  const pw = c.pw, all = c.key === 'R';
+function skillEffectText(c, sk = c.skills[0]) {
+  const pw = sk.pw, all = sk.key === 'R';
   const pct = v => Math.round(v * pw * 100) + '%';
-  switch (c.eff) {
+  switch (sk.eff) {
     case 'd': return (all || c.pos === 'M') ? `모든 적에게 공격력의 ${pct(2.2)} 피해` : `대상에게 공격력의 ${pct(3.5)} 피해`;
     case 'c': return `${all ? '모든 적' : '대상'}에게 공격력의 ${pct(2.0)} 피해 + ${all ? 2 : 1.5}초 기절`;
     case 'h': return `${all ? '모든 아군' : '체력이 가장 낮은 아군'}을 공격력의 ${pct(2.5)}만큼 회복 + 대상에게 ${pct(1.5)} 피해`;
@@ -284,7 +285,7 @@ const field = { allies: $('#allies'), enemies: $('#enemies') };
 
 function makeAlly(id, b) {
   const c = CHAMP_BY_ID[id], st = calcStats(id, b);
-  return { side: 'a', id, c, ...st, maxHp: st.hp, hp: st.hp, shield: 0, gauge: rand(0, c.mana * 0.4), timer: rand(0, 0.5), stun: 0, buffT: 0, buffMul: 0, dead: false };
+  return { side: 'a', id, c, ...st, maxHp: st.hp, hp: st.hp, shield: 0, si: 0, gauge: rand(0, c.skills[0].mana * 0.4), timer: rand(0, 0.5), stun: 0, buffT: 0, buffMul: 0, dead: false };
 }
 function makeEnemy(m, s, kind) {
   const e = enemyStat(s), k = KIND[kind];
@@ -296,7 +297,7 @@ function makeEnemyChamp(c, s) {
   const u = makeEnemy([c.name, '⚔️'], s, 'champ'), base = BASE[c.pos], tm = TAGMOD[c.tag];
   const hpM = base.hp * tm.hp / 330, atkM = base.atk * tm.atk / 28;
   Object.assign(u, { c, champId: c.id, maxHp: u.maxHp * hpM, hp: u.maxHp * hpM, atk: u.atk * atkM, def: u.def * (base.def / 18),
-    aspd: base.aspd * 0.85, crit: base.crit + tm.crit, skill: tm.skill, gaugeRate: tm.gauge, gauge: rand(0, c.mana * 0.3) });
+    aspd: base.aspd * 0.85, crit: base.crit + tm.crit, skill: tm.skill, gaugeRate: tm.gauge, si: 0, gauge: rand(0, c.skills[0].mana * 0.3) });
   return u;
 }
 // 챕터 지역(데마시아, 녹서스 …)의 챔피언 중에서 고른다
@@ -380,7 +381,7 @@ function paintUnits() {
     u.hpEl.style.width = Math.max(0, u.hp / u.maxHp * 100) + '%';
     u.shEl.style.width = Math.min(100, u.shield / u.maxHp * 100) + '%';
     u.hpTx.textContent = `${fmt(Math.max(0, u.hp))}/${fmt(u.maxHp)}`;
-    if (u.gEl) { const mx = u.c.mana; u.gEl.style.width = Math.min(100, u.gauge / mx * 100) + '%'; u.gBar.classList.toggle('full', u.gauge >= mx * 0.9); u.gTx.textContent = `${Math.floor(u.gauge)}/${mx}`; }
+    if (u.gEl) { const mx = curSkill(u).mana; u.gEl.style.width = Math.min(100, u.gauge / mx * 100) + '%'; u.gBar.classList.toggle('full', u.gauge >= mx * 0.9); u.gTx.textContent = `${Math.floor(u.gauge)}/${mx}`; }
     u.el.classList.toggle('dead', u.dead);
     u.el.classList.toggle('stun', u.stun > 0 && !u.dead);
     u.el.classList.toggle('buff', u.buffT > 0 && !u.dead);
@@ -429,14 +430,23 @@ function allyTarget(arr) {
   return list[0];
 }
 // 아군·적 챔피언 공용: 시전자 편에 따라 적/아군이 바뀐다
-function castSkill(u) {
-  const c = u.c, pw = c.pw * u.skill, all = c.key === 'R', mine = u.side === 'a';
+// 다음에 쓸 스킬 (등급별 스킬을 순서대로 돌아가며 사용)
+const curSkill = u => u.c.skills[u.si % u.c.skills.length];
+// 마나가 다음 스킬 비용만큼 차면 시전하고 다음 스킬로 넘어간다
+function tryCast(u) {
+  const sk = curSkill(u);
+  if (u.gauge < sk.mana) return false;
+  u.gauge = 0; u.si++; castSkill(u, sk);
+  return true;
+}
+function castSkill(u, sk) {
+  const c = u.c, pw = sk.pw * u.skill, all = sk.key === 'R', mine = u.side === 'a';
   const foes = alive(mine ? B.enemies : B.allies), friends = alive(mine ? B.allies : B.enemies);
   if (!foes.length) return;
   const tgt = mine ? foes[0] : allyTarget(foes), atk = u.atk * (1 + u.buffMul);
-  banner(`${mine ? '' : '⚠️ 적 '}${c.name} [${c.key}] ${c.skill}!`);
+  banner(`${mine ? '' : '⚠️ 적 '}${c.name} [${sk.key}] ${sk.name}!`);
   flash(u, 'cast', 400);
-  switch (c.eff) {
+  switch (sk.eff) {
     case 'd':
       if (all || c.pos === 'M') foes.forEach(e => dealDamage(u, e, atk * 2.2 * pw, 'skill'));
       else dealDamage(u, tgt, atk * 3.5 * pw, 'skill');
@@ -468,17 +478,17 @@ function tick(dt) {
     if (u.dead) continue;
     if (u.buffT > 0) { u.buffT -= dt; if (u.buffT <= 0) u.buffMul = 0; }
     if (u.stun > 0) { u.stun -= dt; continue; }
-    u.gauge = Math.min(u.c.mana, u.gauge + u.c.manaGain * MANA_REGEN * u.gaugeRate * dt);
+    u.gauge = Math.min(curSkill(u).mana, u.gauge + u.c.manaGain * MANA_REGEN * u.gaugeRate * dt);
     u.timer += dt;
     const foes = alive(B.enemies); if (!foes.length) break;
-    if (u.gauge >= u.c.mana) { u.gauge = 0; castSkill(u); continue; }
+    if (tryCast(u)) continue;
     if (u.timer >= 1 / (u.aspd * (1 + u.buffMul))) {
       u.timer = 0;
       // 원딜/미드는 체력이 가장 낮은 적, 나머지는 맨 앞 적
       const tgt = (u.c.pos === 'A' || u.c.pos === 'M') ? foes.reduce((a, e) => e.hp < a.hp ? e : a) : foes[0];
       const crit = Math.random() < u.crit;
       dealDamage(u, tgt, u.atk * (1 + u.buffMul) * (crit ? 1.75 : 1), crit ? 'crit' : '');
-      u.gauge = Math.min(u.c.mana, u.gauge + u.c.manaGain * u.gaugeRate);
+      u.gauge = Math.min(curSkill(u).mana, u.gauge + u.c.manaGain * u.gaugeRate);
       flash(u, 'atk', 100);
     }
   }
@@ -490,13 +500,13 @@ function tick(dt) {
     e.timer += dt;
     if (e.champId) {
       // 적 챔피언: 아군과 같은 방식으로 마나를 모아 스킬을 쓴다
-      e.gauge = Math.min(e.c.mana, e.gauge + e.c.manaGain * MANA_REGEN * e.gaugeRate * dt);
-      if (e.gauge >= e.c.mana) { e.gauge = 0; castSkill(e); continue; }
+      e.gauge = Math.min(curSkill(e).mana, e.gauge + e.c.manaGain * MANA_REGEN * e.gaugeRate * dt);
+      if (tryCast(e)) continue;
       if (e.timer >= 1 / (e.aspd * (1 + e.buffMul))) {
         e.timer = 0; flash(e, 'atk');
         const crit = Math.random() < e.crit;
         dealDamage(e, allyTarget(B.allies), e.atk * (1 + e.buffMul) * (crit ? 1.75 : 1), 'dmg');
-        e.gauge = Math.min(e.c.mana, e.gauge + e.c.manaGain * e.gaugeRate);
+        e.gauge = Math.min(curSkill(e).mana, e.gauge + e.c.manaGain * e.gaugeRate);
       }
       continue;
     }
@@ -852,7 +862,7 @@ function gachaHTML() {
   return `<div class="banner-art"><div class="t">협곡 소환</div><div class="sub">전설 확정까지 <b style="color:#ffb52e">${PITY - S.pity}</b>회 · 총 ${S.pulls}회 소환</div>
         <div class="imgs">${featured.map(c => `<img src="${img(c.id)}">`).join('')}</div></div>
       <div class="row"><button class="btn big" id="pull1">1회 소환<br>💎 ${PULL_COST}</button><button class="btn teal big" id="pull10">10회 소환<br>💎 ${PULL10_COST}</button>
-        <button class="btn big ${S.autoPull ? 'teal on-pulse' : ''}" id="autoPullBtn">자동 소환 ${S.autoPull ? 'ON' : 'OFF'}<br><span class="sub">${AUTO_PULL_SEC}초마다 1회</span></button></div>
+        <button class="btn big ${S.autoPull ? 'teal on-pulse' : ''}" id="autoPullBtn">자동 소환 ${S.autoPull ? 'ON' : 'OFF'}<br><span class="sub">${AUTO_PULL_SEC}초마다 ${AUTO_PULL_N}회</span></button></div>
       <div class="row" style="margin-top:8px"><button class="btn big" id="pullTk" ${S.tickets < 1 ? 'disabled' : ''}>🎫 소환권 1회<br><span class="sub">보유 ${S.tickets}장</span></button><button class="btn teal big" id="pullTkAll" ${S.tickets < 1 ? 'disabled' : ''}>🎫 모두 사용<br><span class="sub">${S.tickets}회 한 번에 소환</span></button></div>
       <div class="box" style="margin-top:10px"><div class="rates">${RARITY.map(r => `<span style="color:${r.color}">${r.name} ${r.rate}% (${CHAMPS.filter(c => c.rarity === r.key).length}종)</span>`).join('')}</div>
         <div class="sub" style="margin-top:6px">· 10회 소환 시 영웅 이상 1회 보장 · ${PITY}회 내 전설 확정<br>· 중복 획득 시 성급(★) 강화 재료가 됩니다 · ★6 이후 중복은 골드로 전환<br>· 🎫 소환권은 스테이지 보스 첫 클리어, 공허의 탑에서 얻습니다</div></div>
@@ -942,11 +952,12 @@ function showDetail(id) {
       ${o ? `<div>Lv.<b>${o.lv}</b> / ${cap}</div>` : ''}</div></div>
     <div class="stats"><div>체력<b>${fmt(st.hp)}</b></div><div>공격력<b>${fmt(st.atk)}</b></div><div>방어력<b>${fmt(st.def)}</b></div>
       <div>공격 속도<b>${st.aspd.toFixed(2)}</b></div><div>치명타<b>${Math.round(st.crit * 100)}%</b></div><div>전투력<b>${fmt(powerOf(st))}</b></div></div>
-    <div class="skill"><img id="spIcon" src="" alt="" style="visibility:hidden"><div>
-      <div><span class="k">${c.key}</span><b>${c.skill}</b> <span class="sub">${EFFECTS[c.eff].icon} ${EFFECTS[c.eff].name} · 고정 스킬</span></div>
-      <div class="eff">▶ ${skillEffectText(c)}</div>
-      <div class="sub" style="margin-top:3px">스킬 위력 ×${c.pw.toFixed(2)} · 🔷 마나 ${c.mana} · 평타당 마나 +${c.manaGain} (초당 +${(c.manaGain * MANA_REGEN).toFixed(1)})</div>
-      <p id="spDesc">원작 스킬 설명 불러오는 중…</p></div></div>
+    <div class="sub" style="margin:4px 0">스킬 ${c.skills.length}개 (${r.name} 등급) · 순서대로 돌아가며 사용 · 평타당 마나 +${c.manaGain} (초당 +${(c.manaGain * MANA_REGEN).toFixed(1)})</div>
+    ${c.skills.map(sk => `<div class="skill" style="margin-bottom:6px"><img data-sp="${sk.key}" src="" alt="" style="visibility:hidden"><div>
+      <div><span class="k">${sk.key}</span><b>${sk.name}</b> <span class="sub">${EFFECTS[sk.eff].icon} ${EFFECTS[sk.eff].name}${sk.key === c.key ? ' · 고정 스킬' : ''}</span></div>
+      <div class="eff">▶ ${skillEffectText(c, sk)}</div>
+      <div class="sub" style="margin-top:3px">스킬 위력 ×${sk.pw.toFixed(2)} · 🔷 마나 ${sk.mana}</div>
+      <p data-spd="${sk.key}">원작 스킬 설명 불러오는 중…</p></div></div>`).join('')}
     ${o ? `<div class="box" style="margin-top:10px">
       <div class="row"><div style="flex:1">레벨업 비용 💰 <b>${o.lv >= cap ? '-' : fmt(levelCost(o.lv, c.rarity))}</b></div>
         <button class="btn" data-dlv="1" ${o.lv >= cap ? 'disabled' : ''}>+1</button><button class="btn" data-dlv="10" ${o.lv >= cap ? 'disabled' : ''}>+10</button><button class="btn" data-dlv="999" ${o.lv >= cap ? 'disabled' : ''}>MAX</button></div>
@@ -957,15 +968,18 @@ function showDetail(id) {
       : `<div class="box sub" style="margin-top:10px;text-align:center">소환에서 획득할 수 있습니다.</div><button class="btn big" id="closeBtn" style="width:100%">닫기</button>`}`);
   loadSpell(c);
 }
+// 원작 스킬 아이콘·설명을 Data Dragon에서 불러와 각 스킬 칸에 채운다
 async function loadSpell(c) {
-  const idx = 'QWER'.indexOf(c.key);
   try {
     if (!spellCache[c.id]) spellCache[c.id] = (await (await fetch(`https://ddragon.leagueoflegends.com/cdn/${DDRAGON_VER}/data/ko_KR/champion/${c.id}.json`)).json()).data[c.id];
-    const sp = spellCache[c.id].spells[idx];
     if (detailId !== c.id) return;
-    const ic = $('#spIcon'); ic.src = `https://ddragon.leagueoflegends.com/cdn/${DDRAGON_VER}/img/spell/${sp.image.full}`; ic.style.visibility = 'visible';
-    $('#spDesc').textContent = sp.description.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-  } catch (e) { const d = $('#spDesc'); if (d) d.textContent = '(원작 설명을 불러오지 못했습니다)'; }
+    for (const sk of c.skills) {
+      const sp = spellCache[c.id].spells['QWER'.indexOf(sk.key)];
+      const ic = document.querySelector(`#modalBox [data-sp="${sk.key}"]`), d = document.querySelector(`#modalBox [data-spd="${sk.key}"]`);
+      if (ic) { ic.src = `https://ddragon.leagueoflegends.com/cdn/${DDRAGON_VER}/img/spell/${sp.image.full}`; ic.style.visibility = 'visible'; }
+      if (d) d.textContent = sp.description.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    }
+  } catch (e) { document.querySelectorAll('#modalBox [data-spd]').forEach(d => { d.textContent = '(원작 설명을 불러오지 못했습니다)'; }); }
 }
 function toggleDeck(id) {
   const i = S.deck.indexOf(id);
@@ -993,18 +1007,21 @@ function showLegendFx(list) {
   fxQ = list.slice(); nextFx();
 }
 
-// 자동 소환: 한 번에 다 쓰지 않고 일정 간격으로 1회씩 소환한다 (소환권 → 보석 순서로 사용)
-const AUTO_PULL_SEC = 1.5;
+// 자동 소환: 한 번에 다 쓰지 않고 일정 간격마다 최대 100회씩 소환한다 (소환권 → 보석 순서로 사용)
+const AUTO_PULL_SEC = 1.5, AUTO_PULL_N = 100;
 function autoPullStep() {
-  const useTicket = S.tickets > 0;
-  if (!useTicket && S.gems < PULL_COST) {
+  const nTk = Math.min(AUTO_PULL_N, S.tickets), nGem = Math.min(AUTO_PULL_N - nTk, Math.floor(S.gems / PULL_COST));
+  if (!nTk && !nGem) {
     S.autoPull = false; toast('💎 보석이 부족해 자동 소환을 멈췄습니다');
     if (tab === 'gacha') refreshPanel();
     return;
   }
-  const r = gacha(1, useTicket); if (!r) return;
-  lastPull = [...r, ...(lastPull || [])].slice(0, 30);   // 최근 30회 결과 (최신이 앞)
-  const legends = r.filter(x => x.r === 3); if (legends.length) showLegendFx(legends);
+  const r = [...(nTk ? gacha(nTk, true) || [] : []), ...(nGem ? gacha(nGem) || [] : [])];
+  lastPull = [...r, ...(lastPull || [])].slice(0, AUTO_PULL_N);   // 최근 100회 결과 (최신이 앞)
+  // 연출은 새로 얻은 전설만 보여 주고, 중복 전설은 알림으로 대신한다 (100회마다 연출이 쌓이지 않도록)
+  const legends = r.filter(x => x.r === 3), fresh = legends.filter(x => x.isNew);
+  if (fresh.length) showLegendFx(fresh);
+  toast(`🎲 자동 소환 ${r.length}회${legends.length ? ` · 🌟 전설 ${legends.length}명${fresh.length ? ` (신규 ${fresh.length})` : ''}` : ''}`);
   if (tab === 'gacha') refreshPanel();
 }
 function nextFx() {
@@ -1051,7 +1068,7 @@ $('#panel').onclick = e => {
   if (t.id === 'upAll') autoDeck(upgradeAll() + ' · 자동 편성 완료');   // 강화 후 전투력 기준으로 다시 편성
   if (t.id === 'autoPullBtn') {
     S.autoPull = !S.autoPull; pullT = 0; save(); refreshPanel();
-    toast(S.autoPull ? `🎲 자동 소환 시작 (${AUTO_PULL_SEC}초마다 1회, 소환권 → 보석 순)` : '🎲 자동 소환 끔');
+    toast(S.autoPull ? `🎲 자동 소환 시작 (${AUTO_PULL_SEC}초마다 ${AUTO_PULL_N}회, 소환권 → 보석 순)` : '🎲 자동 소환 끔');
   }
   if (t.id === 'synToggle') { showAllSyn = !showAllSyn; refreshPanel(); }
   if (t.id === 'pull1' || t.id === 'pull10' || t.id === 'pullTk' || t.id === 'pullTkAll') {

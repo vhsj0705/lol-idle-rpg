@@ -11,7 +11,11 @@ function fmt(n) {
 }
 const img = id => `https://ddragon.leagueoflegends.com/cdn/${DDRAGON_VER}/img/champion/${id}.png`;
 const splash = id => `https://ddragon.leagueoflegends.com/cdn/img/champion/loading/${id}_0.jpg`;
-const mapIcon = key => `https://raw.communitydragon.org/latest/game/assets/ux/minimap/icons/${key}.png`;
+// Community Dragon(게임 클라이언트 파일)의 LoL/TFT 이미지. path는 assets/ 아래 경로
+const cdIcon = path => `https://raw.communitydragon.org/latest/game/assets/${path}`;
+const tftUnit = (dir, file = `${dir}_square`, hud = true) => `characters/${dir}/${hud ? 'hud/' : ''}${file}.png`;
+// 아이콘 HTML: 이미지를 못 불러오면 이모지로 대체
+const iconImg = (path, fb, cls = 'mimg') => `<img class="${cls}" src="${cdIcon(path)}" alt="" data-fb="${fb}" onerror="this.outerHTML=this.dataset.fb">`;
 let toastT;
 function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 1800); }
 
@@ -64,25 +68,33 @@ const GEAR_STATS = {
   crit: { name: '치명타 확률', coef: 0.3, w: 3.3 }, aspd: { name: '공격 속도', coef: 0.5, w: 2 },
   skill: { name: '스킬 피해', coef: 0.9, w: 1 }, gauge: { name: '게이지 충전', coef: 0.6, w: 1.3 },
 };
+// img: 칸마다 성격이 맞는 TFT 기본 재료 아이템 아이콘
+const tftItem = name => `maps/particles/tft/item_icons/standard/${name}.png`;
 const GEAR_SLOTS = {
-  weapon: { name: '무기', icon: '🗡️', main: 'atk', items: ['롱소드', 'B.F. 대검', '무한의 대검', '몰락한 왕의 검', '크라켄 학살자'] },
-  armor: { name: '방어구', icon: '🛡️', main: 'hp', items: ['천 갑옷', '쇠사슬 조끼', '가시 갑옷', '워모그의 갑옷', '란두인의 예언'] },
-  helm: { name: '투구', icon: '⛑️', main: 'def', items: ['루비 수정', '거인의 허리띠', '태양불꽃 방패', '가고일 돌갑옷', '심연의 가면'] },
-  gloves: { name: '장갑', icon: '🧤', main: 'crit', items: ['단검', '곡궁', '유령 무희', '스태틱의 단검', '요우무의 유령검'] },
-  boots: { name: '신발', icon: '👢', main: 'aspd', items: ['신발', '판금 장화', '광전사의 군화', '이오니아의 명석함 장화', '수은 장화'] },
-  acc: { name: '장신구', icon: '💍', main: 'skill', items: ['증폭의 고서', '고속 연사포', '존야의 모래시계', '라바돈의 죽음모자', '영겁의 지팡이'] },
+  weapon: { name: '무기', icon: '🗡️', img: tftItem('bf_sword'), main: 'atk', items: ['롱소드', 'B.F. 대검', '무한의 대검', '몰락한 왕의 검', '크라켄 학살자'] },
+  armor: { name: '방어구', icon: '🛡️', img: tftItem('chain_vest'), main: 'hp', items: ['천 갑옷', '쇠사슬 조끼', '가시 갑옷', '워모그의 갑옷', '란두인의 예언'] },
+  helm: { name: '투구', icon: '⛑️', img: tftItem('negatron_cloak'), main: 'def', items: ['루비 수정', '거인의 허리띠', '태양불꽃 방패', '가고일 돌갑옷', '심연의 가면'] },
+  gloves: { name: '장갑', icon: '🧤', img: tftItem('sparring_gloves'), main: 'crit', items: ['단검', '곡궁', '유령 무희', '스태틱의 단검', '요우무의 유령검'] },
+  boots: { name: '신발', icon: '👢', img: tftItem('recurve_bow'), main: 'aspd', items: ['신발', '판금 장화', '광전사의 군화', '이오니아의 명석함 장화', '수은 장화'] },
+  acc: { name: '장신구', icon: '💍', img: tftItem('needlessly_large_rod'), main: 'skill', items: ['증폭의 고서', '고속 연사포', '존야의 모래시계', '라바돈의 죽음모자', '영겁의 지팡이'] },
 };
+const slotIcon = (s, cls = 'gimg') => iconImg(s.img, s.icon, cls);
 const GEAR_KEYS = Object.keys(GEAR_SLOTS);
 const CRAFT_COST = 10;
 const MAX_PLUS = 25;
 
 // 스테이지
 const CHAPTERS = ['데마시아', '녹서스', '아이오니아', '필트오버', '자운', '프렐요드', '슈리마', '그림자 군도', '빌지워터', '공허'];
-// [이름, 대체 이모지, LoL 미니맵 아이콘 키(없으면 이모지)]
-const MOBS = [['근접 미니언', '⚔️'], ['원거리 미니언', '🔮'], ['대포 미니언', '💣'], ['칼날부리', '🐦'], ['어스름 늑대', '🐺'], ['돌거북', '🐢'], ['그롬프', '🐸'], ['바위게', '🦀'], ['공허충', '🪲', 'grub'], ['크루그', '🪨']];
-const ELITES = [['붉은 덩굴정령', '🔥', 'red'], ['푸른 파수꾼', '💧', 'blue'], ['고대 크루그', '🗿', 'camp'], ['공허 유충', '🐛', 'grub']];
-const BOSSES = [['협곡의 전령', '👁️', 'riftherald'], ['화염 드래곤', '🐉', 'dragon_infernal'], ['바다 드래곤', '🌊', 'dragon_ocean'], ['마법공학 드래곤', '⚡', 'dragon_chemtech'], ['바람 드래곤', '🌪️', 'dragon_cloud'],
-  ['대지 드래곤', '⛰️', 'dragon_mountain'], ['장로 드래곤', '🐲', 'dragon_elder'], ['아타칸', '👹', 'atakhan_r'], ['공허의 전령', '🦑', 'riftherald'], ['내셔 남작', '🦂', 'baron']];
+// [이름, 대체 이모지, 이미지 경로] — TFT 유닛 초상화를 우선 쓰고, TFT에 없는 원소 드래곤은 LoL 미니맵 아이콘을 쓴다
+const MOBS = [['근접 미니언', '⚔️', tftUnit('tfteventer_minionmelee')], ['원거리 미니언', '🔮', tftUnit('tfteventer_minionranged')], ['대포 미니언', '💣', tftUnit('tfteventer_minionsiege')],
+  ['칼날부리', '🐦', tftUnit('tft_razorbeak', 'razorbeak_square')], ['어스름 늑대', '🐺', tftUnit('tft_murkwolf')], ['돌거북', '🐢', tftUnit('tft_krug', 'ancientkrug_square')],
+  ['심술두꺼비', '🐸', tftUnit('tft16_pve_gromp')], ['바위게', '🦀', tftUnit('tft18_scuttlecrab', 'tft18_scuttlecrab_square', false)],
+  ['공허충', '🪲', tftUnit('tft16_malzaharvoidling')], ['크루그', '🪨', tftUnit('tft18_krug', 'tft18_krug_square', false)]];
+const ELITES = [['붉은 덩굴정령', '🔥', tftUnit('tft16_pve_redgolem')], ['푸른 파수꾼', '💧', tftUnit('tft16_pve_bluegolem')], ['고대 크루그', '🗿', tftUnit('tft_krug', 'ancientkrug_square')], ['공허 유충', '🐛', tftUnit('tft16_pve_voidgrublarge')]];
+const BOSSES = [['협곡의 전령', '👁️', tftUnit('tft_riftherald', 'tft9_riftherald_square')], ['화염 드래곤', '🐉', 'ux/minimap/icons/dragon_infernal.png'], ['바다 드래곤', '🌊', 'ux/minimap/icons/dragon_ocean.png'],
+  ['마법공학 드래곤', '⚡', 'ux/minimap/icons/dragon_chemtech.png'], ['바람 드래곤', '🌪️', 'ux/minimap/icons/dragon_cloud.png'], ['대지 드래곤', '⛰️', 'ux/minimap/icons/dragon_mountain.png'],
+  ['장로 드래곤', '🐲', tftUnit('tft18_elderdragon')], ['아타칸', '👹', tftUnit('tft16_atakhan')],
+  ['공허의 전령', '🦑', 'characters/tft16_riftherald/skins/base/images/tft16_riftherald_splash_tile_0.png'], ['내셔 남작', '🦂', tftUnit('tft16_baronnashor')]];
 const stageName = s => {
   const ch = Math.floor((s - 1) / 10), sub = (s - 1) % 10 + 1;
   const loop = Math.floor(ch / CHAPTERS.length);
@@ -283,11 +295,8 @@ function spawnWave() {
   renderField();
 }
 
-// 적 이미지: LoL 아이콘을 쓰고, 불러오지 못하면 이모지로 대체
-function monsterPic(u) {
-  if (!u.iconKey) return u.icon;
-  return `<img class="mimg" src="${mapIcon(u.iconKey)}" alt="" data-fb="${u.icon}" onerror="this.outerHTML=this.dataset.fb">`;
-}
+// 적 이미지: TFT/LoL 이미지를 쓰고, 불러오지 못하면 이모지로 대체
+const monsterPic = u => u.iconKey ? iconImg(u.iconKey, u.icon) : u.icon;
 function unitEl(u) {
   const d = document.createElement('div');
   d.className = `unit ${u.side === 'a' ? 'ally' : 'enemy'}${u.kind === 'boss' ? ' boss' : ''}`;
@@ -695,12 +704,13 @@ function heroesHTML() {
     <div class="filters"><span class="sub" style="align-self:center">정렬</span>${chips(Object.entries(SORTS), heroSort, 'sort')}<span class="sub" style="align-self:center">· 출전 중인 챔피언이 항상 맨 앞</span></div>
     <div class="grid">${list.map(c => champCard(c, '', `${SORTS[heroSort]} ${sortText(heroSort, sv.get(c.id))}`)).join('')}</div>`;
 }
+const synIcon = s => s.img ? iconImg(s.img, s.icon, 'timg') : s.icon;
 function synergyHTML(b) {
   const st = synergyState();
   const act = st.filter(x => x.tier >= 0), inact = st.filter(x => x.tier < 0 && x.count > 0);
   const chip = (x, on) => {
     const t = x.s.tiers[Math.max(0, x.tier)];
-    return `<span class="${on ? 'act' : ''}" title="${x.s.desc}">${x.s.icon} ${x.s.name} ${x.count}/${t[0]} : ${bonusText(t[1])}</span>`;
+    return `<span class="${on ? 'act' : ''}" title="${x.s.desc}">${synIcon(x.s)} ${x.s.name} ${x.count}/${t[0]} : ${bonusText(t[1])}</span>`;
   };
   const total = Object.fromEntries(BONUS_KEYS.map(k => [k, b[k]]));
   const nameList = x => x.s.kind === 'region' ? x.s.members.map(id => CHAMP_BY_ID[id].name).join(', ') : x.s.desc;
@@ -712,7 +722,7 @@ function synergyHTML(b) {
     <div class="syn">${act.length ? act.map(x => chip(x, true)).join('') : '<span>활성 시너지가 없습니다</span>'}${inact.map(x => chip(x, false)).join('')}</div>
     <div class="box" style="margin-top:8px"><div class="sub">전체 보너스 합계 (시너지 + 장비 + 포지션/역할군)</div><div class="syn" style="margin-top:4px">${Object.entries(total).filter(([, v]) => v > 0).map(([k, v]) => `<span class="act">${BONUS_NAMES[k]} +${Math.round(v * 100)}%</span>`).join('') || '<span>없음</span>'}</div></div>
     <button class="chip" id="synToggle" style="margin-top:6px">${showAllSyn ? '▲ 시너지 도감 닫기' : '▼ 전체 시너지 도감 보기 (' + SYNERGIES.length + '개)'}</button>
-    ${showAllSyn ? `<div class="synlist">${st.map(x => `<div class="si ${x.tier >= 0 ? 'on' : ''}"><b>${x.s.icon} ${x.s.name}</b> <span class="sub">[${{ region: '지역', squad: '조합', solo: '단독' }[x.s.kind]}] ${x.count}명 편성</span>
+    ${showAllSyn ? `<div class="synlist">${st.map(x => `<div class="si ${x.tier >= 0 ? 'on' : ''}"><b>${synIcon(x.s)} ${x.s.name}</b> <span class="sub">[${{ region: '지역', squad: '조합', solo: '단독' }[x.s.kind]}] ${x.count}명 편성</span>
         <div class="sub">${nameList(x)}</div>${x.s.tiers.map((t, i) => `<div class="${x.tier >= i ? 'tier on' : 'tier'}">${t[0]}명 : ${bonusText(t[1])}</div>`).join('')}</div>`).join('')}</div>` : ''}`;
 }
 function deckHTML() {
@@ -739,17 +749,17 @@ function gachaHTML() {
 }
 function gearCardHTML(k) {
   const s = GEAR_SLOTS[k], g = S.gear[k];
-  if (!g) return `<div class="gi ${forgeSel === k ? 'sel' : ''}" data-gs="${k}"><div class="ic">${s.icon}</div><div class="sub">${s.name} 없음</div></div>`;
-  return `<div class="gi ${forgeSel === k ? 'sel' : ''}" data-gs="${k}" style="border-color:${GEAR_GRADES[g.grade].color}"><div class="ic">${s.icon}</div>
+  if (!g) return `<div class="gi ${forgeSel === k ? 'sel' : ''}" data-gs="${k}"><div class="ic empty">${slotIcon(s)}</div><div class="sub">${s.name} 없음</div></div>`;
+  return `<div class="gi ${forgeSel === k ? 'sel' : ''}" data-gs="${k}" style="border-color:${GEAR_GRADES[g.grade].color}"><div class="ic">${slotIcon(s)}</div>
     <div class="gn" style="color:${GEAR_GRADES[g.grade].color}">${g.name}${g.plus ? ` <span style="color:#ffd84a">+${g.plus}</span>` : ''}</div>
     <div>${GEAR_GRADES[g.grade].name} · iLv ${g.ilvl}</div><div class="sub">능력치 ${g.stats.length}개</div></div>`;
 }
 function forgeDetailHTML() {
   const s = GEAR_SLOTS[forgeSel], g = S.gear[forgeSel];
-  if (!g) return `<div class="sub" style="text-align:center">${s.icon} ${s.name} 칸이 비어 있습니다. 제작으로 획득하세요.</div>`;
+  if (!g) return `<div class="sub" style="text-align:center">${slotIcon(s, 'gimg sm')} ${s.name} 칸이 비어 있습니다. 제작으로 획득하세요.</div>`;
   const o = enhanceOdds(g.plus), pc = v => (v * 100).toFixed(v < 0.1 && v > 0 ? 1 : 0) + '%';
   const e = lastEnh && lastEnh.slot === forgeSel ? ENH_MSG[lastEnh.type] : null;
-  return `<div style="font-weight:700;color:${GEAR_GRADES[g.grade].color}">${s.icon} [${GEAR_GRADES[g.grade].name}] ${g.name} <span style="color:#ffd84a">+${g.plus}/${MAX_PLUS}</span></div>
+  return `<div style="font-weight:700;color:${GEAR_GRADES[g.grade].color}">${slotIcon(s, 'gimg sm')} [${GEAR_GRADES[g.grade].name}] ${g.name} <span style="color:#ffd84a">+${g.plus}/${MAX_PLUS}</span></div>
     <div class="gstats">${g.stats.map(st => `<div>${st.k === s.main ? '⭐ ' : '· '}${gearStatLine(g, st)}</div>`).join('')}</div>
     <div class="sub" style="margin:6px 0">성공 시 능력치 +12%씩 (강화 단계당) · 판매가 💰 ${fmt(sellPrice(g))}</div>
     ${g.plus >= MAX_PLUS ? '<div class="sub">최대 강화입니다</div>' : `<div class="odds"><span style="color:#ffd84a">대성공 ${pc(o.great)} (+2~5)</span><span style="color:#6ee87f">성공 ${pc(o.success)} (+1)</span><span>실패 ${pc(o.fail)}</span>${o.minus ? `<span style="color:#ff9c3b">하락 ${pc(o.minus)} (-1)</span>` : ''}${o.destroy ? `<span style="color:#ff4f6d">파괴 ${pc(o.destroy)}</span>` : ''}</div>
@@ -772,7 +782,7 @@ function forgeHTML() {
 function towerHTML() {
   const f = S.tower, boss = BOSSES[(f - 1) % BOSSES.length], e = enemyStat(towerStage(f)), r = towerReward(f);
   return `<div class="box" style="text-align:center"><h3 style="justify-content:center">🗼 공허의 탑</h3>
-      <div style="font-size:42px">${boss[2] ? `<img class="mimg big" src="${mapIcon(boss[2])}" alt="" data-fb="${boss[1]}" onerror="this.outerHTML=this.dataset.fb">` : boss[1]}</div><div style="font-size:18px;font-weight:900">${f}층 수호자: ${boss[0]}</div>
+      <div style="font-size:42px">${iconImg(boss[2], boss[1], 'mimg big')}</div><div style="font-size:18px;font-weight:900">${f}층 수호자: ${boss[0]}</div>
       <div class="sub">보스 체력 ${fmt(e.hp * 10)} · 공격력 ${fmt(e.atk * 2.2)} · 정예 2마리 동반</div>
       <div style="margin:8px 0">${recHTML(recPowerTower(f))}</div>
       <div class="sub">내 전투력 ⚔️ ${fmt(teamPower())}</div>

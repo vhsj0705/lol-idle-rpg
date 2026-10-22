@@ -148,7 +148,12 @@ h3 { margin: 6px 0 8px; color: var(--gold); font-size: 15px; display: flex; just
 .bar { height: 11px; border-radius: 4px; }
 .bar .bt { position: absolute; inset: 0; font-style: normal; font-size: 8px; line-height: 11px; text-align: center; color: #fff; text-shadow: 0 0 2px #000, 0 0 2px #000; white-space: nowrap; overflow: hidden; }
 .mimg { width: 100%; height: 100%; object-fit: contain; }
-.mimg.big { width: 64px; height: 64px; }
+.mimg.big { width: 64px; height: 64px; border-radius: 10px; }
+.unit .pic .mimg { border-radius: 6px; object-fit: cover; }
+.gimg { width: 40px; height: 40px; border-radius: 6px; vertical-align: middle; }
+.gimg.sm { width: 22px; height: 22px; border-radius: 4px; }
+.gi .ic.empty .gimg { filter: grayscale(1) brightness(.5); }
+.timg { width: 16px; height: 16px; vertical-align: -3px; filter: drop-shadow(0 0 1px #000); }
 
 /* 도감 */
 .card .cv { font-size: 9px; color: var(--teal); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

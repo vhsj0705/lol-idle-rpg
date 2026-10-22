@@ -109,5 +109,11 @@ const SYNERGIES = [
   { kind: 'solo', icon: '🧭', name: '탐험가', desc: '이즈리얼 편성', members: ['Ezreal'], tiers: [[1, { parts: .20 }]] },
   { kind: 'solo', icon: '🤖', name: '증기 기관', desc: '블리츠크랭크 편성', members: ['Blitzcrank'], tiers: [[1, { hp: .08, dr: .03 }]] },
 ];
+// 지역 시너지 아이콘: TFT 특성 아이콘 (시즌 16 룬테라 지역, 빌지워터는 시즌 9). 경로는 Community Dragon assets/ 아래
+const REGION_TRAIT = { '데마시아': '16_demacia', '녹서스': '16_noxus', '아이오니아': '16_ionia', '필트오버': '16_piltover', '자운': '16_zaun', '프렐요드': '16_freljord', '슈리마': '16_shurima',
+  '그림자 군도': '16_shadowisles', '빌지워터': '9_bilgewater', '공허': '16_void', '이쉬탈': '16_ixtal', '타곤': '16_targon', '반들 시티 (요들)': '16_yordle' };
 // 현재 모르는 ID가 있어도 오류가 나지 않도록 존재하는 챔피언만 남긴다
-SYNERGIES.forEach(s => { s.members = s.members.filter(id => CHAMP_BY_ID[id]); });
+SYNERGIES.forEach(s => {
+  s.members = s.members.filter(id => CHAMP_BY_ID[id]);
+  if (REGION_TRAIT[s.name]) s.img = `ux/traiticons/trait_icon_${REGION_TRAIT[s.name]}.png`;
+});

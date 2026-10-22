@@ -15,7 +15,8 @@ const splash = id => `https://ddragon.leagueoflegends.com/cdn/img/champion/loadi
 const cdIcon = path => `https://raw.communitydragon.org/latest/game/assets/${path}`;
 const tftUnit = (dir, file = `${dir}_square`, hud = true) => `characters/${dir}/${hud ? 'hud/' : ''}${file}.png`;
 // 아이콘 HTML: 이미지를 못 불러오면 이모지로 대체
-const iconImg = (path, fb, cls = 'mimg') => `<img class="${cls}" src="${cdIcon(path)}" alt="" data-fb="${fb}" onerror="this.outerHTML=this.dataset.fb">`;
+const iconImg = (url, fb, cls = 'mimg') => `<img class="${cls}" src="${url}" alt="" data-fb="${fb}" onerror="this.outerHTML=this.dataset.fb">`;
+const itemImg = id => `https://ddragon.leagueoflegends.com/cdn/${DDRAGON_VER}/img/item/${id}.png`;
 let toastT;
 function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 1800); }
 
@@ -68,17 +69,18 @@ const GEAR_STATS = {
   crit: { name: '치명타 확률', coef: 0.3, w: 3.3 }, aspd: { name: '공격 속도', coef: 0.5, w: 2 },
   skill: { name: '스킬 피해', coef: 0.9, w: 1 }, gauge: { name: '게이지 충전', coef: 0.6, w: 1.3 },
 };
-// img: 칸마다 성격이 맞는 TFT 기본 재료 아이템 아이콘
-const tftItem = name => `maps/particles/tft/item_icons/standard/${name}.png`;
+// items: 등급(일반→신화)별 LoL 완성 아이템 [Data Dragon 아이템 ID, 이름]. 이미지도 해당 아이템의 것을 쓴다
 const GEAR_SLOTS = {
-  weapon: { name: '무기', icon: '🗡️', img: tftItem('bf_sword'), main: 'atk', items: ['롱소드', 'B.F. 대검', '무한의 대검', '몰락한 왕의 검', '크라켄 학살자'] },
-  armor: { name: '방어구', icon: '🛡️', img: tftItem('chain_vest'), main: 'hp', items: ['천 갑옷', '쇠사슬 조끼', '가시 갑옷', '워모그의 갑옷', '란두인의 예언'] },
-  helm: { name: '투구', icon: '⛑️', img: tftItem('negatron_cloak'), main: 'def', items: ['루비 수정', '거인의 허리띠', '태양불꽃 방패', '가고일 돌갑옷', '심연의 가면'] },
-  gloves: { name: '장갑', icon: '🧤', img: tftItem('sparring_gloves'), main: 'crit', items: ['단검', '곡궁', '유령 무희', '스태틱의 단검', '요우무의 유령검'] },
-  boots: { name: '신발', icon: '👢', img: tftItem('recurve_bow'), main: 'aspd', items: ['신발', '판금 장화', '광전사의 군화', '이오니아의 명석함 장화', '수은 장화'] },
-  acc: { name: '장신구', icon: '💍', img: tftItem('needlessly_large_rod'), main: 'skill', items: ['증폭의 고서', '고속 연사포', '존야의 모래시계', '라바돈의 죽음모자', '영겁의 지팡이'] },
+  weapon: { name: '무기', icon: '🗡️', main: 'atk', items: [[3142, '요우무의 유령검'], [3071, '칠흑의 양날 도끼'], [3153, '몰락한 왕의 검'], [3031, '무한의 대검'], [6672, '크라켄 학살자']] },
+  armor: { name: '방어구', icon: '🛡️', main: 'hp', items: [[3742, '망자의 갑옷'], [3068, '태양불꽃 방패'], [3084, '강철심장'], [3083, '워모그의 갑옷'], [3143, '란두인의 예언']] },
+  helm: { name: '투구', icon: '⛑️', main: 'def', items: [[6333, '죽음의 무도'], [3065, '정령의 형상'], [3110, '얼어붙은 심장'], [8020, '심연의 가면'], [3026, '수호 천사']] },
+  gloves: { name: '장갑', icon: '🧤', main: 'crit', items: [[3094, '고속 연사포'], [3085, '루난의 허리케인'], [3046, '유령 무희'], [3036, '도미닉 경의 인사'], [6675, '나보리 명멸검']] },
+  boots: { name: '신발', icon: '👢', main: 'aspd', items: [[3047, '판금 장화'], [3006, '광전사의 군화'], [3158, '명석함의 아이오니아 장화'], [3174, '무장 진격'], [3172, '건메탈 군화']] },
+  acc: { name: '장신구', icon: '💍', main: 'skill', items: [[3157, '존야의 모래시계'], [3003, '대천사의 지팡이'], [3165, '모렐로노미콘'], [6657, '영겁의 지팡이'], [3089, '라바돈의 죽음모자']] },
 };
-const slotIcon = (s, cls = 'gimg') => iconImg(s.img, s.icon, cls);
+const gearName = g => GEAR_SLOTS[g.slot].items[g.grade][1];
+// 장비 아이콘: 장착 장비는 그 아이템, 빈 칸은 일반 등급 아이템을 흐리게 표시
+const gearIcon = (slot, grade, cls = 'gimg') => iconImg(itemImg(GEAR_SLOTS[slot].items[grade][0]), GEAR_SLOTS[slot].icon, cls);
 const GEAR_KEYS = Object.keys(GEAR_SLOTS);
 const CRAFT_COST = 10;
 const MAX_PLUS = 25;
@@ -106,10 +108,10 @@ const towerStage = f => Math.round(4 + f * 2.4);
 
 // 적 종류별 배율 / 전투 시간 환산용
 const KIND = { mob: { hp: 1, atk: 1, aspd: 0.8, g: 1, p: 1 }, elite: { hp: 4, atk: 1.6, aspd: 0.8, g: 5, p: 3 }, boss: { hp: 10, atk: 2.2, aspd: 0.6, g: 15, p: 8 } };
-// 스테이지 보상: 골드 외 보상은 기존의 5배 + 스테이지가 오를수록 증가
-const partsPerKill = (s, kind) => KIND[kind].p * 5 * (1 + s * 0.05);
-const firstClearGems = s => Math.floor((s % 10 === 0 ? 750 : 150) * (1 + s * 0.03));
-const firstClearTickets = s => s % 10 === 0 ? 1 + Math.floor(s / 30) : 0;
+// 스테이지 보상: 골드 외 보상은 초기 버전의 2.5배 + 스테이지가 오를수록 증가
+const partsPerKill = (s, kind) => KIND[kind].p * 2.5 * (1 + s * 0.05);
+const firstClearGems = s => Math.floor((s % 10 === 0 ? 375 : 75) * (1 + s * 0.03));
+const firstClearTickets = s => s % 20 === 0 ? 1 + Math.floor(s / 60) : 0;   // 보스 스테이지 2개마다
 
 // ===== 권장 전투력 =====
 // 해당 전투에서 만나는 적의 총 체력과 초당 피해량으로 위협도를 구하고,
@@ -151,7 +153,7 @@ const SAVE_KEY = 'lolIdleSave_v1';
 let S;
 function newState() {
   const st = { gold: 300, gems: 3000, parts: 20, tickets: 3, stage: 1, maxStage: 1, tower: 1, owned: {}, deck: [], gear: Object.fromEntries(GEAR_KEYS.map(k => [k, null])),
-    pity: 0, pulls: 0, auto: true, speed: 1, autoCraft: false, lastSave: Date.now() };
+    pity: 0, pulls: 0, auto: true, speed: 1, autoCraft: false, autoTower: false, lastSave: Date.now() };
   // 스타터: 포지션별 일반 등급 챔피언 1명씩
   for (const p of Object.keys(POS)) {
     const c = CHAMPS.find(c => c.pos === p && c.rarity === 0) || CHAMPS.find(c => c.pos === p);
@@ -269,17 +271,19 @@ function makeEnemy(m, s, kind) {
     timer: rand(0, 0.8), stun: 0, dead: false, gold: killGold(s) * k.g, parts: partsPerKill(s, kind), slamT: 0, shield: 0 };
 }
 function startStage() {
+  if (S.autoTower && S.deck.length) return startTower(false); // 탑 자동 도전 중이면 탑을 계속한다
   const b = bonuses();
   B = { mode: 'stage', s: S.stage, wave: 1, waves: 3, bonus: b, allies: S.deck.map(id => makeAlly(id, b)), enemies: [], over: false };
   spawnWave();
 }
-function startTower() {
+function startTower(show = true) {
   if (!S.deck.length) return toast('편성된 챔피언이 없습니다');
   const b = bonuses(), f = S.tower, s = towerStage(f);
   B = { mode: 'tower', s, floor: f, wave: 1, waves: 1, bonus: b, allies: S.deck.map(id => makeAlly(id, b)), enemies: [], over: false };
   const boss = BOSSES[(f - 1) % BOSSES.length];
   B.enemies = [makeEnemy(pick(ELITES), s, 'elite'), makeEnemy([`${f}층 수호자: ${boss[0]}`, boss[1], boss[2]], s, 'boss'), makeEnemy(pick(ELITES), s, 'elite')];
-  renderField(); switchTab('tower');
+  renderField();
+  if (show) switchTab('tower'); else if (tab === 'tower') refreshPanel();
 }
 function spawnWave() {
   const s = B.s, sub = (s - 1) % 10 + 1;
@@ -296,7 +300,7 @@ function spawnWave() {
 }
 
 // 적 이미지: TFT/LoL 이미지를 쓰고, 불러오지 못하면 이모지로 대체
-const monsterPic = u => u.iconKey ? iconImg(u.iconKey, u.icon) : u.icon;
+const monsterPic = u => u.iconKey ? iconImg(cdIcon(u.iconKey), u.icon) : u.icon;
 function unitEl(u) {
   const d = document.createElement('div');
   d.className = `unit ${u.side === 'a' ? 'ally' : 'enemy'}${u.kind === 'boss' ? ' boss' : ''}`;
@@ -454,13 +458,13 @@ function tick(dt) {
 function towerReward(f) {
   const boss5 = f % 5 === 0, boss10 = f % 10 === 0;
   return {
-    gems: Math.floor(1000 + f * 120 + (boss5 ? 5000 + f * 100 : 0)),
-    gold: Math.floor(killGold(towerStage(f)) * 150 * (boss5 ? 2 : 1)),
-    parts: Math.floor(60 + f * 8 + (boss5 ? 100 : 0)),
-    tickets: 1 + (boss5 ? 2 : 0) + Math.floor(f / 20),
-    cards: f % 3 === 0 ? 1 + Math.floor(f / 10) : 0,        // 3층마다 챔피언 카드
-    legendCards: boss10 ? 3 : 0,                              // 10층마다 전설 카드 3장
-    gear: boss5 ? Math.min(4, 2 + Math.floor(f / 25)) : -1,   // 5층마다 영웅 이상 장비 (최소 등급)
+    gems: Math.floor(500 + f * 60 + (boss5 ? 2500 + f * 50 : 0)),
+    gold: Math.floor(killGold(towerStage(f)) * 75 * (boss5 ? 2 : 1)),
+    parts: Math.floor(30 + f * 4 + (boss5 ? 50 : 0)),
+    tickets: (f % 2 === 0 ? 1 : 0) + (boss5 ? 1 : 0) + Math.floor(f / 40),
+    cards: f % 6 === 0 ? 1 + Math.floor(f / 20) : 0,        // 6층마다 챔피언 카드
+    legendCards: boss10 ? (f % 20 === 0 ? 2 : 1) : 0,         // 10층마다 전설 카드 (20층마다 2장)
+    gear: boss10 ? Math.min(4, 2 + Math.floor(f / 25)) : -1,  // 10층마다 영웅 이상 장비 (최소 등급)
   };
 }
 function towerRewardText(r) {
@@ -478,7 +482,7 @@ function grantTowerReward(f) {
     grantCard(c, r.cards); got.push(`${c.name} 카드 ${r.cards}장`);
   }
   if (r.legendCards) { const c = pick(CHAMPS.filter(c => c.rarity === 3)); grantCard(c, r.legendCards); got.push(`${c.name} 카드 ${r.legendCards}장`); }
-  if (r.gear >= 0) { const res = craft(r.gear, true); if (res) got.push(`${GEAR_GRADES[res.item.grade].name} ${res.item.name}`); }
+  if (r.gear >= 0) { const res = craft(r.gear, true); if (res) got.push(`${GEAR_GRADES[res.item.grade].name} ${gearName(res.item)}`); }
   return { r, got };
 }
 
@@ -496,9 +500,16 @@ function waveCleared() {
   if (B.mode === 'tower') {
     const f = B.floor, { r, got } = grantTowerReward(f);
     S.tower++;
+    save();
+    if (S.autoTower) {
+      // 자동 도전: 보상은 알림으로만 보여 주고 바로 다음 층에 도전한다
+      log(`🗼 ${f}층 돌파! ${towerRewardText(r)}${got.length ? ' · ' + got.join(', ') : ''}`);
+      toast(`🗼 ${f}층 돌파! 다음 층 자동 도전`);
+      setTimeout(() => { if (B !== cur) return; if (S.autoTower) startTower(false); else { startStage(); refreshPanel(); } }, 1000 / S.speed);
+      return;
+    }
     openModal(`<h3 style="justify-content:center">🗼 ${f}층 돌파!</h3><div style="text-align:center;line-height:1.8">${towerRewardText(r).replace(/ · /g, '<br>')}${got.length ? `<br><b style="color:var(--gold)">획득: ${got.join(', ')}</b>` : ''}</div>
       <button class="btn big" id="closeBtn" style="width:100%;margin-top:12px">확인</button>`);
-    save();
     setTimeout(() => { startStage(); refreshPanel(); }, 1200);
     return;
   }
@@ -515,7 +526,10 @@ function defeat() {
   B.over = true;
   const cur = B;
   if (B.mode === 'tower') {
-    toast(`🗼 ${B.floor}층 도전 실패… 챔피언을 강화하세요`);
+    // 자동 도전 중 실패하면 자동 도전을 멈추고 스테이지 사냥으로 돌아간다
+    const wasAuto = S.autoTower;
+    if (wasAuto) { S.autoTower = false; save(); }
+    toast(`🗼 ${B.floor}층 도전 실패… 챔피언을 강화하세요${wasAuto ? ' (자동 도전 중지)' : ''}`);
     setTimeout(() => { startStage(); refreshPanel(); }, 1200);
     return;
   }
@@ -622,7 +636,7 @@ function rollGear(minGrade = 0) {
   const slot = pick(GEAR_KEYS), main = GEAR_SLOTS[slot].main;
   const others = Object.keys(GEAR_STATS).filter(k => k !== main).sort(() => Math.random() - 0.5);
   const keys = [main, ...others].slice(0, GEAR_GRADES[grade].n);
-  return { slot, grade, ilvl: S.maxStage, plus: 0, name: GEAR_SLOTS[slot].items[grade], stats: keys.map(k => ({ k, r: rand(0.9, 1.1) })) };
+  return { slot, grade, ilvl: S.maxStage, plus: 0, stats: keys.map(k => ({ k, r: rand(0.9, 1.1) })) };
 }
 function craft(minGrade = 0, free = false) {
   if (!free) {
@@ -638,7 +652,9 @@ function craft(minGrade = 0, free = false) {
   return { item, result };
 }
 // 장비 강화 (골드 소모, 확률형). +1 이상 올릴수록 비용이 크게 늘고 성공 확률은 낮아진다
-const enhanceCost = g => Math.floor(300 * (g.grade + 1) * Math.pow(1.32, g.plus) * (1 + g.ilvl * 0.1));
+// 비용은 기존 공식의 2배를 최소로 하고, 장비 레벨(=최고 스테이지)의 처치 골드에 비례해 함께 오른다.
+// (기존 공식은 iLv에 정비례라 골드 수입이 지수로 늘어나는 후반에 강화가 너무 쌌다)
+const enhanceCost = g => Math.floor(Math.pow(1.32, g.plus) * (g.grade + 1) * Math.max(600 * (1 + g.ilvl * 0.1), killGold(g.ilvl) * 50));
 function enhanceOdds(plus) {
   const great = 0.04;
   const success = Math.max(0.18, 0.62 - plus * 0.03);
@@ -658,7 +674,7 @@ function enhance(slot) {
   else if ((r -= o.great) < 0) { const d = Math.min(MAX_PLUS - g.plus, 2 + Math.floor(Math.random() * 4)); g.plus += d; res = { type: 'great', delta: d }; }
   else if ((r -= o.success) < 0) { g.plus++; res = { type: 'success', delta: 1 }; }
   else res = { type: 'fail', delta: 0 };
-  res.name = g.name; res.plus = g.plus;
+  res.plus = g.plus;
   refreshAllyStats(); save();
   return res;
 }
@@ -704,7 +720,7 @@ function heroesHTML() {
     <div class="filters"><span class="sub" style="align-self:center">정렬</span>${chips(Object.entries(SORTS), heroSort, 'sort')}<span class="sub" style="align-self:center">· 출전 중인 챔피언이 항상 맨 앞</span></div>
     <div class="grid">${list.map(c => champCard(c, '', `${SORTS[heroSort]} ${sortText(heroSort, sv.get(c.id))}`)).join('')}</div>`;
 }
-const synIcon = s => s.img ? iconImg(s.img, s.icon, 'timg') : s.icon;
+const synIcon = s => s.img ? iconImg(cdIcon(s.img), s.icon, 'timg') : s.icon;
 function synergyHTML(b) {
   const st = synergyState();
   const act = st.filter(x => x.tier >= 0), inact = st.filter(x => x.tier < 0 && x.count > 0);
@@ -742,24 +758,24 @@ function gachaHTML() {
   return `<div class="banner-art"><div class="t">협곡 소환</div><div class="sub">전설 확정까지 <b style="color:#ffb52e">${PITY - S.pity}</b>회 · 총 ${S.pulls}회 소환</div>
         <div class="imgs">${featured.map(c => `<img src="${img(c.id)}">`).join('')}</div></div>
       <div class="row"><button class="btn big" id="pull1">1회 소환<br>💎 ${PULL_COST}</button><button class="btn teal big" id="pull10">10회 소환<br>💎 ${PULL10_COST}</button></div>
-      <div class="row" style="margin-top:8px"><button class="btn big" id="pullTk" ${S.tickets < 1 ? 'disabled' : ''}>🎫 소환권으로 1회 (보유 ${S.tickets})</button></div>
+      <div class="row" style="margin-top:8px"><button class="btn big" id="pullTk" ${S.tickets < 1 ? 'disabled' : ''}>🎫 소환권 1회<br><span class="sub">보유 ${S.tickets}장</span></button><button class="btn teal big" id="pullTkAll" ${S.tickets < 1 ? 'disabled' : ''}>🎫 모두 사용<br><span class="sub">${S.tickets}회 한 번에 소환</span></button></div>
       <div class="box" style="margin-top:10px"><div class="rates">${RARITY.map(r => `<span style="color:${r.color}">${r.name} ${r.rate}% (${CHAMPS.filter(c => c.rarity === r.key).length}종)</span>`).join('')}</div>
         <div class="sub" style="margin-top:6px">· 10회 소환 시 영웅 이상 1회 보장 · ${PITY}회 내 전설 확정<br>· 중복 획득 시 성급(★) 강화 재료가 됩니다 · ★6 이후 중복은 골드로 전환<br>· 🎫 소환권은 스테이지 보스 첫 클리어, 공허의 탑에서 얻습니다</div></div>
       ${lastPull ? `<h3>소환 결과</h3><div class="grid pull-res">${lastPull.map((x, i) => champCard(x.c, x.isNew ? '<span class="new">NEW</span>' : '').replace('class="card', `style="animation-delay:${i * 0.06}s" class="card ${x.r === 3 ? 'leg' : x.r === 2 ? 'epic' : ''}`)).join('')}</div>` : ''}`;
 }
 function gearCardHTML(k) {
   const s = GEAR_SLOTS[k], g = S.gear[k];
-  if (!g) return `<div class="gi ${forgeSel === k ? 'sel' : ''}" data-gs="${k}"><div class="ic empty">${slotIcon(s)}</div><div class="sub">${s.name} 없음</div></div>`;
-  return `<div class="gi ${forgeSel === k ? 'sel' : ''}" data-gs="${k}" style="border-color:${GEAR_GRADES[g.grade].color}"><div class="ic">${slotIcon(s)}</div>
-    <div class="gn" style="color:${GEAR_GRADES[g.grade].color}">${g.name}${g.plus ? ` <span style="color:#ffd84a">+${g.plus}</span>` : ''}</div>
+  if (!g) return `<div class="gi ${forgeSel === k ? 'sel' : ''}" data-gs="${k}"><div class="ic empty">${gearIcon(k, 0)}</div><div class="sub">${s.name} 없음</div></div>`;
+  return `<div class="gi ${forgeSel === k ? 'sel' : ''}" data-gs="${k}" style="border-color:${GEAR_GRADES[g.grade].color}"><div class="ic">${gearIcon(k, g.grade)}</div>
+    <div class="gn" style="color:${GEAR_GRADES[g.grade].color}">${gearName(g)}${g.plus ? ` <span style="color:#ffd84a">+${g.plus}</span>` : ''}</div>
     <div>${GEAR_GRADES[g.grade].name} · iLv ${g.ilvl}</div><div class="sub">능력치 ${g.stats.length}개</div></div>`;
 }
 function forgeDetailHTML() {
   const s = GEAR_SLOTS[forgeSel], g = S.gear[forgeSel];
-  if (!g) return `<div class="sub" style="text-align:center">${slotIcon(s, 'gimg sm')} ${s.name} 칸이 비어 있습니다. 제작으로 획득하세요.</div>`;
+  if (!g) return `<div class="sub" style="text-align:center">${s.icon} ${s.name} 칸이 비어 있습니다. 제작으로 획득하세요.</div>`;
   const o = enhanceOdds(g.plus), pc = v => (v * 100).toFixed(v < 0.1 && v > 0 ? 1 : 0) + '%';
   const e = lastEnh && lastEnh.slot === forgeSel ? ENH_MSG[lastEnh.type] : null;
-  return `<div style="font-weight:700;color:${GEAR_GRADES[g.grade].color}">${slotIcon(s, 'gimg sm')} [${GEAR_GRADES[g.grade].name}] ${g.name} <span style="color:#ffd84a">+${g.plus}/${MAX_PLUS}</span></div>
+  return `<div style="font-weight:700;color:${GEAR_GRADES[g.grade].color}">${gearIcon(forgeSel, g.grade, 'gimg sm')} [${GEAR_GRADES[g.grade].name}] ${gearName(g)} <span style="color:#ffd84a">+${g.plus}/${MAX_PLUS}</span></div>
     <div class="gstats">${g.stats.map(st => `<div>${st.k === s.main ? '⭐ ' : '· '}${gearStatLine(g, st)}</div>`).join('')}</div>
     <div class="sub" style="margin:6px 0">성공 시 능력치 +12%씩 (강화 단계당) · 판매가 💰 ${fmt(sellPrice(g))}</div>
     ${g.plus >= MAX_PLUS ? '<div class="sub">최대 강화입니다</div>' : `<div class="odds"><span style="color:#ffd84a">대성공 ${pc(o.great)} (+2~5)</span><span style="color:#6ee87f">성공 ${pc(o.success)} (+1)</span><span>실패 ${pc(o.fail)}</span>${o.minus ? `<span style="color:#ff9c3b">하락 ${pc(o.minus)} (-1)</span>` : ''}${o.destroy ? `<span style="color:#ff4f6d">파괴 ${pc(o.destroy)}</span>` : ''}</div>
@@ -782,13 +798,15 @@ function forgeHTML() {
 function towerHTML() {
   const f = S.tower, boss = BOSSES[(f - 1) % BOSSES.length], e = enemyStat(towerStage(f)), r = towerReward(f);
   return `<div class="box" style="text-align:center"><h3 style="justify-content:center">🗼 공허의 탑</h3>
-      <div style="font-size:42px">${iconImg(boss[2], boss[1], 'mimg big')}</div><div style="font-size:18px;font-weight:900">${f}층 수호자: ${boss[0]}</div>
+      <div style="font-size:42px">${iconImg(cdIcon(boss[2]), boss[1], 'mimg big')}</div><div style="font-size:18px;font-weight:900">${f}층 수호자: ${boss[0]}</div>
       <div class="sub">보스 체력 ${fmt(e.hp * 10)} · 공격력 ${fmt(e.atk * 2.2)} · 정예 2마리 동반</div>
       <div style="margin:8px 0">${recHTML(recPowerTower(f))}</div>
       <div class="sub">내 전투력 ⚔️ ${fmt(teamPower())}</div>
       <div class="box" style="margin:10px 0;text-align:left"><div class="sub">이 층의 보상</div><div style="line-height:1.8">${towerRewardText(r).replace(/ · /g, '<br>')}</div>
-        <div class="sub" style="margin-top:4px">${f % 5 === 0 ? '🌟 보스 층 보너스 포함 · ' : ''}층이 높을수록 보상이 늘어납니다 (5층: 보석·장비, 10층: 전설 카드)</div></div>
-      <button class="btn teal big" id="towerBtn" style="width:100%;margin-top:6px" ${B && B.mode === 'tower' ? 'disabled' : ''}>${B && B.mode === 'tower' ? '도전 중…' : '도전하기'}</button></div>
+        <div class="sub" style="margin-top:4px">${f % 5 === 0 ? '🌟 보스 층 보너스 포함 · ' : ''}층이 높을수록 보상이 늘어납니다 (5층마다 보석, 10층마다 전설 카드·장비)</div></div>
+      <div class="row" style="margin-top:6px"><button class="btn teal big" id="towerBtn" ${B && B.mode === 'tower' ? 'disabled' : ''}>${B && B.mode === 'tower' ? '도전 중…' : '도전하기'}</button>
+        <button class="btn big ${S.autoTower ? 'teal' : ''}" id="autoTowerBtn">자동 도전 ${S.autoTower ? 'ON' : 'OFF'}</button></div>
+      <div class="sub" style="margin-top:6px">자동 도전: 층을 돌파하면 바로 다음 층에 도전하고, 실패하면 멈춘 뒤 스테이지 사냥으로 돌아갑니다.</div></div>
       <div class="box sub">공허의 탑은 층마다 강해지는 보스에 도전해 다양한 보상을 얻는 콘텐츠입니다. 실패해도 잃는 것은 없습니다.</div>`;
 }
 function refreshPanel() {
@@ -798,7 +816,7 @@ function refreshPanel() {
 }
 function craftResText(r) {
   const g = r.item;
-  return `<span style="color:${GEAR_GRADES[g.grade].color};font-weight:700">[${GEAR_GRADES[g.grade].name}] ${g.name}</span> <span class="sub">${GEAR_SLOTS[g.slot].name} · 능력치 ${g.stats.length}개 (${g.stats.map(st => gearStatLine(g, st)).join(', ')})</span> → ${r.result === 'equip' ? '<b style="color:var(--teal)">장착!</b>' : `판매 💰${fmt(sellPrice(g))}`}`;
+  return `${gearIcon(g.slot, g.grade, 'gimg sm')} <span style="color:${GEAR_GRADES[g.grade].color};font-weight:700">[${GEAR_GRADES[g.grade].name}] ${gearName(g)}</span> <span class="sub">${GEAR_SLOTS[g.slot].name} · 능력치 ${g.stats.length}개 (${g.stats.map(st => gearStatLine(g, st)).join(', ')})</span> → ${r.result === 'equip' ? '<b style="color:var(--teal)">장착!</b>' : `판매 💰${fmt(sellPrice(g))}`}`;
 }
 
 function openModal(html) { $('#modalBox').innerHTML = html; $('#modal').classList.remove('hidden'); }
@@ -905,14 +923,19 @@ $('#panel').onclick = e => {
   if (t.id === 'autoDeck') autoDeck();
   if (t.id === 'upAll') { upgradeAll(); refreshPanel(); }
   if (t.id === 'synToggle') { showAllSyn = !showAllSyn; refreshPanel(); }
-  if (t.id === 'pull1' || t.id === 'pull10' || t.id === 'pullTk') {
-    const r = gacha(t.id === 'pull10' ? 10 : 1, t.id === 'pullTk');
+  if (t.id === 'pull1' || t.id === 'pull10' || t.id === 'pullTk' || t.id === 'pullTkAll') {
+    const r = t.id === 'pullTkAll' ? gacha(S.tickets, true) : gacha(t.id === 'pull10' ? 10 : 1, t.id === 'pullTk');
     if (r) { lastPull = r; refreshPanel(); const legends = r.filter(x => x.r === 3); if (legends.length) showLegendFx(legends); }
   }
   if (t.id === 'craftBtn') { const r = craft(); if (r) { lastCraft = r; if (r.result === 'equip') forgeSel = r.item.slot; refreshPanel(); $('#ovenIcon').classList.add('go'); } }
   if (t.id === 'autoCraftBtn') { S.autoCraft = !S.autoCraft; refreshPanel(); }
   if (t.id === 'enhBtn') { const r = enhance(forgeSel); if (r) { lastEnh = { slot: forgeSel, ...r }; renderGearBox(); } }
   if (t.id === 'towerBtn') startTower();
+  if (t.id === 'autoTowerBtn') {
+    S.autoTower = !S.autoTower; save();
+    if (S.autoTower && !(B && B.mode === 'tower')) startTower(); else refreshPanel();
+    toast(S.autoTower ? '🗼 공허의 탑 자동 도전 시작' : '🗼 자동 도전 끔 (현재 층까지만 진행)');
+  }
 };
 
 // ===== 오프라인 보상 =====

@@ -152,7 +152,8 @@ h3 { margin: 6px 0 8px; color: var(--gold); font-size: 15px; display: flex; just
 .unit .pic .mimg { border-radius: 6px; object-fit: cover; }
 .gimg { width: 40px; height: 40px; border-radius: 6px; vertical-align: middle; }
 .gimg.sm { width: 22px; height: 22px; border-radius: 4px; }
-.gi .ic.empty .gimg { filter: grayscale(1) brightness(.5); }
+.gi .ic.empty .gimg { filter: grayscale(1) brightness(.4); opacity: .6; }
+.gi .gimg { border: 1px solid #ffffff33; }
 .timg { width: 16px; height: 16px; vertical-align: -3px; filter: drop-shadow(0 0 1px #000); }
 
 /* 도감 */

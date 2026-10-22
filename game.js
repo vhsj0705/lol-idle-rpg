@@ -49,7 +49,7 @@ const levelCost = (lv, rarity) => Math.floor(20 * Math.pow(1.068, lv - 1) * RARI
 // 성급 강화: 중복 카드 + 골드 (성급이 오를수록 약 1.8배씩)
 const starCost = (star, rarity) => Math.floor(200 * Math.pow(1.79, star - 1) * RARITY_COST[rarity]);
 // 스킬: 챔피언마다 위력(pw)과 마나 비용(mana, 위력에 비례), 마나 회복 속도(c.manaGain)가 다르다.
-// 등급이 높을수록 스킬이 많고(c.skills: 일반 1 ~ 전설 4개), 전투에서는 Q→W→E→R 순서로 돌아가며 쓴다
+// 등급이 높을수록 스킬이 많고(c.skills: 일반 1 ~ 전설 4개), 전투에서는 그중 하나를 무작위로 골라 쓴다
 const MANA_REGEN = 1 / 8;                         // 초당 자연 회복 = 평타 1회 회복량 × 1/8
 
 // 소환
@@ -285,7 +285,7 @@ const field = { allies: $('#allies'), enemies: $('#enemies') };
 
 function makeAlly(id, b) {
   const c = CHAMP_BY_ID[id], st = calcStats(id, b);
-  return { side: 'a', id, c, ...st, maxHp: st.hp, hp: st.hp, shield: 0, si: 0, gauge: rand(0, c.skills[0].mana * 0.4), timer: rand(0, 0.5), stun: 0, buffT: 0, buffMul: 0, dead: false };
+  return { side: 'a', id, c, ...st, maxHp: st.hp, hp: st.hp, shield: 0, si: randSkill(c), gauge: rand(0, c.skills[0].mana * 0.4), timer: rand(0, 0.5), stun: 0, buffT: 0, buffMul: 0, dead: false };
 }
 function makeEnemy(m, s, kind) {
   const e = enemyStat(s), k = KIND[kind];
@@ -297,7 +297,7 @@ function makeEnemyChamp(c, s) {
   const u = makeEnemy([c.name, '⚔️'], s, 'champ'), base = BASE[c.pos], tm = TAGMOD[c.tag];
   const hpM = base.hp * tm.hp / 330, atkM = base.atk * tm.atk / 28;
   Object.assign(u, { c, champId: c.id, maxHp: u.maxHp * hpM, hp: u.maxHp * hpM, atk: u.atk * atkM, def: u.def * (base.def / 18),
-    aspd: base.aspd * 0.85, crit: base.crit + tm.crit, skill: tm.skill, gaugeRate: tm.gauge, si: 0, gauge: rand(0, c.skills[0].mana * 0.3) });
+    aspd: base.aspd * 0.85, crit: base.crit + tm.crit, skill: tm.skill, gaugeRate: tm.gauge, si: randSkill(c), gauge: rand(0, c.skills[0].mana * 0.3) });
   return u;
 }
 // 챕터 지역(데마시아, 녹서스 …)의 챔피언 중에서 고른다
@@ -430,13 +430,13 @@ function allyTarget(arr) {
   return list[0];
 }
 // 아군·적 챔피언 공용: 시전자 편에 따라 적/아군이 바뀐다
-// 다음에 쓸 스킬 (등급별 스킬을 순서대로 돌아가며 사용)
-const curSkill = u => u.c.skills[u.si % u.c.skills.length];
-// 마나가 다음 스킬 비용만큼 차면 시전하고 다음 스킬로 넘어간다
+// 다음에 쓸 스킬: 가진 스킬 중 하나를 무작위로 미리 골라 두고(마나 바가 그 스킬 비용 기준), 시전하면 다시 고른다
+const randSkill = c => Math.floor(Math.random() * c.skills.length);
+const curSkill = u => u.c.skills[u.si];
 function tryCast(u) {
   const sk = curSkill(u);
   if (u.gauge < sk.mana) return false;
-  u.gauge = 0; u.si++; castSkill(u, sk);
+  u.gauge = 0; u.si = randSkill(u.c); castSkill(u, sk);
   return true;
 }
 function castSkill(u, sk) {
@@ -952,7 +952,7 @@ function showDetail(id) {
       ${o ? `<div>Lv.<b>${o.lv}</b> / ${cap}</div>` : ''}</div></div>
     <div class="stats"><div>체력<b>${fmt(st.hp)}</b></div><div>공격력<b>${fmt(st.atk)}</b></div><div>방어력<b>${fmt(st.def)}</b></div>
       <div>공격 속도<b>${st.aspd.toFixed(2)}</b></div><div>치명타<b>${Math.round(st.crit * 100)}%</b></div><div>전투력<b>${fmt(powerOf(st))}</b></div></div>
-    <div class="sub" style="margin:4px 0">스킬 ${c.skills.length}개 (${r.name} 등급) · 순서대로 돌아가며 사용 · 평타당 마나 +${c.manaGain} (초당 +${(c.manaGain * MANA_REGEN).toFixed(1)})</div>
+    <div class="sub" style="margin:4px 0">스킬 ${c.skills.length}개 (${r.name} 등급) · 전투에서 무작위로 사용 · 평타당 마나 +${c.manaGain} (초당 +${(c.manaGain * MANA_REGEN).toFixed(1)})</div>
     ${c.skills.map(sk => `<div class="skill" style="margin-bottom:6px"><img data-sp="${sk.key}" src="" alt="" style="visibility:hidden"><div>
       <div><span class="k">${sk.key}</span><b>${sk.name}</b> <span class="sub">${EFFECTS[sk.eff].icon} ${EFFECTS[sk.eff].name}${sk.key === c.key ? ' · 고정 스킬' : ''}</span></div>
       <div class="eff">▶ ${skillEffectText(c, sk)}</div>

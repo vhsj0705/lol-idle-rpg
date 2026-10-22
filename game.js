@@ -10,6 +10,8 @@ function fmt(n) {
   return n.toLocaleString();
 }
 const img = id => `https://ddragon.leagueoflegends.com/cdn/${DDRAGON_VER}/img/champion/${id}.png`;
+const splash = id => `https://ddragon.leagueoflegends.com/cdn/img/champion/loading/${id}_0.jpg`;
+const mapIcon = key => `https://raw.communitydragon.org/latest/game/assets/ux/minimap/icons/${key}.png`;
 let toastT;
 function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 1800); }
 
@@ -34,35 +36,53 @@ const LV_GROWTH = 1.075;                       // 레벨당 능력치 +7.5% (복
 const STAR_MULT = [1, 1.5, 2.2, 3.2, 4.6, 6.5]; // ★1~★6 능력치 배율
 const STAR_NEED = [1, 2, 4, 8, 15];             // 다음 ★까지 필요한 중복 카드 수
 const MAX_STAR = 6;
+const MAX_DECK = 10;
 const levelCap = star => star * 20 + 10;       // ★1:30 ★2:50 … ★6:130
-const levelCost = (lv, rarity) => Math.floor(10 * Math.pow(1.11, lv - 1) * (1 + rarity * 0.25));
+// 등급별 육성 비용 배율: 일반 ×1 · 희귀 ×2 · 영웅 ×3.5 · 전설 ×5
+const RARITY_COST = [1, 2, 3.5, 5];
+const levelCost = (lv, rarity) => Math.floor(20 * Math.pow(1.14, lv - 1) * RARITY_COST[rarity]);
+// 성급 강화: 중복 카드 + 골드 (성급이 오를수록 약 3.2배씩)
+const starCost = (star, rarity) => Math.floor(2000 * Math.pow(3.2, star - 1) * RARITY_COST[rarity]);
 // 스킬: Q/W/E는 게이지가 빨리 차고, R(궁극기)은 느리지만 강하다
 const skillGain = key => key === 'R' ? 11 : 20;  // 평타 1회당 게이지
 const skillPow = key => key === 'R' ? 1.9 : 1.0;
 
 // 소환
 const PULL_COST = 100, PULL10_COST = 1000, PITY = 70;
-// 장비
+
+// 장비: 6칸, 등급이 높을수록 능력치 종류(개수)와 수치가 늘어난다
 const GEAR_GRADES = [
-  { name: '일반', color: '#9aa4b1', rate: 50, base: 6 },
-  { name: '희귀', color: '#4aa8ff', rate: 30, base: 12 },
-  { name: '영웅', color: '#b46cff', rate: 14, base: 20 },
-  { name: '전설', color: '#ffb52e', rate: 5, base: 32 },
-  { name: '신화', color: '#ff4f6d', rate: 1, base: 50 },
+  { name: '일반', color: '#9aa4b1', rate: 50, base: 8, n: 1 },
+  { name: '희귀', color: '#4aa8ff', rate: 30, base: 16, n: 2 },
+  { name: '영웅', color: '#b46cff', rate: 14, base: 28, n: 3 },
+  { name: '전설', color: '#ffb52e', rate: 5, base: 45, n: 4 },
+  { name: '신화', color: '#ff4f6d', rate: 1, base: 70, n: 5 },
 ];
-const GEAR_SLOTS = {
-  weapon: { name: '무기', icon: '🗡️', items: ['롱소드', 'B.F. 대검', '무한의 대검', '몰락한 왕의 검', '크라켄 학살자'] },
-  armor: { name: '방어구', icon: '🛡️', items: ['천 갑옷', '쇠사슬 조끼', '가시 갑옷', '워모그의 갑옷', '란두인의 예언'] },
-  acc: { name: '장신구', icon: '💍', items: ['증폭의 고서', '고속 연사포', '존야의 모래시계', '라바돈의 죽음모자', '영겁의 지팡이'] },
+// coef: 수치 계수, w: 장비 점수 가중치(좋은 장비 비교용)
+const GEAR_STATS = {
+  atk: { name: '공격력', coef: 1, w: 1 }, hp: { name: '체력', coef: 1, w: 0.8 }, def: { name: '방어력', coef: 1, w: 0.8 },
+  crit: { name: '치명타 확률', coef: 0.3, w: 3.3 }, aspd: { name: '공격 속도', coef: 0.5, w: 2 },
+  skill: { name: '스킬 피해', coef: 0.9, w: 1 }, gauge: { name: '게이지 충전', coef: 0.6, w: 1.3 },
 };
-const ACC_STATS = { crit: '치명타', aspd: '공격 속도', skill: '스킬 피해' };
+const GEAR_SLOTS = {
+  weapon: { name: '무기', icon: '🗡️', main: 'atk', items: ['롱소드', 'B.F. 대검', '무한의 대검', '몰락한 왕의 검', '크라켄 학살자'] },
+  armor: { name: '방어구', icon: '🛡️', main: 'hp', items: ['천 갑옷', '쇠사슬 조끼', '가시 갑옷', '워모그의 갑옷', '란두인의 예언'] },
+  helm: { name: '투구', icon: '⛑️', main: 'def', items: ['루비 수정', '거인의 허리띠', '태양불꽃 방패', '가고일 돌갑옷', '심연의 가면'] },
+  gloves: { name: '장갑', icon: '🧤', main: 'crit', items: ['단검', '곡궁', '유령 무희', '스태틱의 단검', '요우무의 유령검'] },
+  boots: { name: '신발', icon: '👢', main: 'aspd', items: ['신발', '판금 장화', '광전사의 군화', '이오니아의 명석함 장화', '수은 장화'] },
+  acc: { name: '장신구', icon: '💍', main: 'skill', items: ['증폭의 고서', '고속 연사포', '존야의 모래시계', '라바돈의 죽음모자', '영겁의 지팡이'] },
+};
+const GEAR_KEYS = Object.keys(GEAR_SLOTS);
 const CRAFT_COST = 10;
+const MAX_PLUS = 25;
 
 // 스테이지
 const CHAPTERS = ['데마시아', '녹서스', '아이오니아', '필트오버', '자운', '프렐요드', '슈리마', '그림자 군도', '빌지워터', '공허'];
-const MOBS = [['근접 미니언', '⚔️'], ['원거리 미니언', '🔮'], ['대포 미니언', '💣'], ['칼날부리', '🐦'], ['어스름 늑대', '🐺'], ['돌거북', '🐢'], ['그롬프', '🐸'], ['바위게', '🦀'], ['공허충', '🪲'], ['크루그', '🪨']];
-const ELITES = [['붉은 덩굴정령', '🔥'], ['푸른 파수꾼', '💧'], ['고대 크루그', '🗿'], ['공허 유충', '🐛']];
-const BOSSES = [['협곡의 전령', '👁️'], ['화염 드래곤', '🐉'], ['바다 드래곤', '🌊'], ['마법공학 드래곤', '⚡'], ['바람 드래곤', '🌪️'], ['대지 드래곤', '⛰️'], ['장로 드래곤', '🐲'], ['아타칸', '👹'], ['공허의 전령', '🦑'], ['내셔 남작', '🦂']];
+// [이름, 대체 이모지, LoL 미니맵 아이콘 키(없으면 이모지)]
+const MOBS = [['근접 미니언', '⚔️'], ['원거리 미니언', '🔮'], ['대포 미니언', '💣'], ['칼날부리', '🐦'], ['어스름 늑대', '🐺'], ['돌거북', '🐢'], ['그롬프', '🐸'], ['바위게', '🦀'], ['공허충', '🪲', 'grub'], ['크루그', '🪨']];
+const ELITES = [['붉은 덩굴정령', '🔥', 'red'], ['푸른 파수꾼', '💧', 'blue'], ['고대 크루그', '🗿', 'camp'], ['공허 유충', '🐛', 'grub']];
+const BOSSES = [['협곡의 전령', '👁️', 'riftherald'], ['화염 드래곤', '🐉', 'dragon_infernal'], ['바다 드래곤', '🌊', 'dragon_ocean'], ['마법공학 드래곤', '⚡', 'dragon_chemtech'], ['바람 드래곤', '🌪️', 'dragon_cloud'],
+  ['대지 드래곤', '⛰️', 'dragon_mountain'], ['장로 드래곤', '🐲', 'dragon_elder'], ['아타칸', '👹', 'atakhan_r'], ['공허의 전령', '🦑', 'riftherald'], ['내셔 남작', '🦂', 'baron']];
 const stageName = s => {
   const ch = Math.floor((s - 1) / 10), sub = (s - 1) % 10 + 1;
   const loop = Math.floor(ch / CHAPTERS.length);
@@ -70,12 +90,55 @@ const stageName = s => {
 };
 const enemyStat = s => ({ hp: 85 * Math.pow(1.135, s - 1), atk: 9 * Math.pow(1.115, s - 1), def: 5 + s * 1.2 });
 const killGold = s => 5 * Math.pow(1.12, s - 1);
+const towerStage = f => Math.round(4 + f * 2.4);
+
+// 적 종류별 배율 / 전투 시간 환산용
+const KIND = { mob: { hp: 1, atk: 1, aspd: 0.8, g: 1, p: 1 }, elite: { hp: 4, atk: 1.6, aspd: 0.8, g: 5, p: 3 }, boss: { hp: 10, atk: 2.2, aspd: 0.6, g: 15, p: 8 } };
+// 스테이지 보상: 골드 외 보상은 기존의 5배 + 스테이지가 오를수록 증가
+const partsPerKill = (s, kind) => KIND[kind].p * 5 * (1 + s * 0.05);
+const firstClearGems = s => Math.floor((s % 10 === 0 ? 750 : 150) * (1 + s * 0.03));
+const firstClearTickets = s => s % 10 === 0 ? 1 + Math.floor(s / 30) : 0;
+
+// ===== 권장 전투력 =====
+// 해당 전투에서 만나는 적의 총 체력과 초당 피해량으로 위협도를 구하고,
+// 전투 시뮬레이션에서 승률 약 83%가 되는 전투력에 맞춰 보정한다 (권장 = 4.75 × 위협도^0.91, 탑은 ×1.15)
+const REC_A = 4.75, REC_EXP = 0.91, REC_TOWER = 1.15;
+function waveKinds(s, wave, waves) {
+  const sub = (s - 1) % 10 + 1;
+  if (wave < waves) return Array(3 + (s > 20 ? 1 : 0)).fill('mob');
+  return sub === 10 ? ['boss'] : ['mob', 'elite', 'mob'];
+}
+function threat(waveList, s) {
+  const e = enemyStat(s); let hp = 0, dps = 0;
+  for (const kinds of waveList) {
+    let d = 0;
+    for (const k of kinds) { const m = KIND[k]; hp += e.hp * m.hp; d += e.atk * m.atk * m.aspd; }
+    dps = Math.max(dps, d);
+  }
+  return Math.sqrt(hp * dps);
+}
+const recFromThreat = t => REC_A * Math.pow(t, REC_EXP);
+function recPowerStage(s) { return recFromThreat(threat([waveKinds(s, 1, 3), waveKinds(s, 2, 3), waveKinds(s, 3, 3)], s)); }
+function recPowerTower(f) { return recFromThreat(threat([['elite', 'boss', 'elite']], towerStage(f))) * REC_TOWER; }
+// 내 전투력 / 권장 전투력 → 성공 가능성 표시
+function odds(power, rec) {
+  const r = power / rec;
+  if (r >= 1.3) return { cls: 'o-safe', text: '충분히 가능' };
+  if (r >= 1.05) return { cls: 'o-ok', text: '클리어 가능' };
+  if (r >= 0.85) return { cls: 'o-even', text: '비등비등' };
+  if (r >= 0.65) return { cls: 'o-risk', text: '위험' };
+  return { cls: 'o-bad', text: '성공확률 낮음' };
+}
+function recHTML(rec) {
+  const o = odds(teamPower(), rec);
+  return `<span class="rec ${o.cls}">권장 ⚔️ ${fmt(rec)} · ${o.text}</span>`;
+}
 
 // ===== 상태 / 저장 =====
 const SAVE_KEY = 'lolIdleSave_v1';
 let S;
 function newState() {
-  const st = { gold: 300, gems: 3000, parts: 20, stage: 1, maxStage: 1, tower: 1, owned: {}, deck: [], gear: { weapon: null, armor: null, acc: null },
+  const st = { gold: 300, gems: 3000, parts: 20, tickets: 3, stage: 1, maxStage: 1, tower: 1, owned: {}, deck: [], gear: Object.fromEntries(GEAR_KEYS.map(k => [k, null])),
     pity: 0, pulls: 0, auto: true, speed: 1, autoCraft: false, lastSave: Date.now() };
   // 스타터: 포지션별 일반 등급 챔피언 1명씩
   for (const p of Object.keys(POS)) {
@@ -85,19 +148,49 @@ function newState() {
   }
   return st;
 }
+let migrationNote = '';
+function normalizeGear(st) {
+  const g = {}; let refund = 0;
+  for (const k of GEAR_KEYS) {
+    const it = st.gear && st.gear[k];
+    if (it && it.stats) g[k] = it;
+    else { g[k] = null; if (it) refund += Math.floor(20 * (it.grade + 1) * Math.pow(1.1, it.ilvl || 1)); }
+  }
+  st.gear = g;
+  if (refund) { st.gold += refund; migrationNote = `장비 시스템이 개편되어 기존 장비가 판매되었습니다. 💰 ${fmt(refund)} 지급`; }
+}
 function load() {
-  try { const raw = localStorage.getItem(SAVE_KEY); if (raw) return Object.assign(newState(), JSON.parse(raw)); } catch (e) { /* 저장소 사용 불가 */ }
+  try { const raw = localStorage.getItem(SAVE_KEY); if (raw) { const st = Object.assign(newState(), JSON.parse(raw)); normalizeGear(st); return st; } } catch (e) { /* 저장소 사용 불가 */ }
   return null;
 }
 function save() { S.lastSave = Date.now(); try { localStorage.setItem(SAVE_KEY, JSON.stringify(S)); } catch (e) { /* 무시 */ } }
 
-// ===== 능력치 계산 =====
+// ===== 장비 계산 =====
+const gearMainOf = g => GEAR_SLOTS[g.slot].main;
+function gearStatVal(g, st) {
+  const isMain = st.k === gearMainOf(g);
+  return GEAR_GRADES[g.grade].base * GEAR_STATS[st.k].coef * (isMain ? 1 : 0.65) * st.r * (1 + g.ilvl * 0.05) * (1 + g.plus * 0.12) / 100;
+}
+const gearScore = g => g.stats.reduce((a, st) => a + gearStatVal(g, st) * GEAR_STATS[st.k].w, 0);
+const gearStatLine = (g, st) => `${GEAR_STATS[st.k].name} +${(gearStatVal(g, st) * 100).toFixed(1)}%`;
+const sellPrice = g => Math.floor(20 * (g.grade + 1) * Math.pow(1.1, g.ilvl) * (1 + g.plus * 0.3));
+
+// ===== 시너지 / 능력치 계산 =====
+const BONUS_KEYS = ['atk', 'hp', 'def', 'crit', 'aspd', 'skill', 'gauge', 'dr', 'ls', 'gold', 'parts'];
+function synergyState(deck = S.deck) {
+  return SYNERGIES.map(s => {
+    const count = s.need === 'legend10' ? deck.filter(id => CHAMP_BY_ID[id].rarity === 3).length : deck.filter(id => s.members.includes(id)).length;
+    let tier = -1;
+    s.tiers.forEach((t, i) => { if (count >= t[0]) tier = i; });
+    return { s, count, tier };
+  });
+}
 function bonuses(deck = S.deck) {
-  const b = { atk: 0, hp: 0, def: 0, crit: 0, aspd: 0, skill: 0, gauge: 0, team: 0, tags: {}, posCount: 0 };
+  const b = Object.fromEntries(BONUS_KEYS.map(k => [k, 0])); b.tags = {}; b.posCount = 0; b.team = 0; b.active = [];
   const tags = {}, poss = new Set();
   for (const id of deck) { const c = CHAMP_BY_ID[id]; tags[c.tag] = (tags[c.tag] || 0) + 1; poss.add(c.pos); }
   for (const [t, n] of Object.entries(tags)) {
-    const lv = n >= 4 ? 3 : n >= 3 ? 2 : n >= 2 ? 1 : 0;
+    const lv = n >= 6 ? 4 : n >= 4 ? 3 : n >= 3 ? 2 : n >= 2 ? 1 : 0;
     b.tags[t] = lv;
     if (t === 'F') b.atk += 0.10 * lv;
     if (t === 'T') { b.hp += 0.15 * lv; b.def += 0.15 * lv; }
@@ -108,10 +201,15 @@ function bonuses(deck = S.deck) {
   b.posCount = poss.size;
   b.team = poss.size === 5 ? 0.20 : poss.size === 4 ? 0.10 : poss.size === 3 ? 0.05 : 0;
   b.atk += b.team; b.hp += b.team;
-  const g = S.gear;
-  if (g.weapon) b.atk += gearVal(g.weapon);
-  if (g.armor) { b.hp += gearVal(g.armor); b.def += gearVal(g.armor); }
-  if (g.acc) b[g.acc.stat] += gearVal(g.acc) * (g.acc.stat === 'crit' ? 0.35 : 1);
+  // 지역 / 특수 조합 / 단독 시너지
+  for (const x of synergyState(deck)) {
+    if (x.tier < 0) continue;
+    const bn = x.s.tiers[x.tier][1];
+    for (const [k, v] of Object.entries(bn)) b[k] += v;
+    b.active.push(x);
+  }
+  // 장비
+  for (const k of GEAR_KEYS) { const g = S.gear[k]; if (g) for (const st of g.stats) b[st.k] += gearStatVal(g, st); }
   return b;
 }
 function calcStats(id, b = bonuses()) {
@@ -126,6 +224,7 @@ function calcStats(id, b = bonuses()) {
     crit: Math.min(0.95, base.crit + tm.crit + b.crit),
     skill: tm.skill * (1 + b.skill) * (c.pos === 'M' ? 1.3 : 1),
     gaugeRate: tm.gauge * (1 + b.gauge) * (c.pos === 'S' ? 1.2 : 1),
+    dr: Math.min(0.6, b.dr), ls: b.ls,
   };
 }
 const powerOf = st => st.atk * st.aspd * (1 + st.crit * 0.75) * 6 * (1 + (st.skill - 1) * 0.5) + st.hp * 0.5 + st.def * 3;
@@ -152,41 +251,43 @@ function makeAlly(id, b) {
   const c = CHAMP_BY_ID[id], st = calcStats(id, b);
   return { side: 'a', id, c, ...st, maxHp: st.hp, hp: st.hp, shield: 0, gauge: rand(0, 40), timer: rand(0, 0.5), stun: 0, buffT: 0, buffMul: 0, dead: false };
 }
-function makeEnemy(name, icon, s, kind) {
-  const e = enemyStat(s);
-  const k = kind === 'boss' ? { hp: 10, atk: 2.2, g: 15, p: 8 } : kind === 'elite' ? { hp: 4, atk: 1.6, g: 5, p: 3 } : { hp: 1, atk: 1, g: 1, p: 1 };
-  return { side: 'e', name, icon, kind, maxHp: e.hp * k.hp, hp: e.hp * k.hp, atk: e.atk * k.atk, def: e.def, aspd: kind === 'boss' ? 0.6 : 0.8, crit: 0.05,
-    timer: rand(0, 0.8), stun: 0, dead: false, gold: killGold(s) * k.g, parts: k.p, slamT: 0, shield: 0 };
+function makeEnemy(m, s, kind) {
+  const e = enemyStat(s), k = KIND[kind];
+  return { side: 'e', name: m[0], icon: m[1], iconKey: m[2], kind, maxHp: e.hp * k.hp, hp: e.hp * k.hp, atk: e.atk * k.atk, def: e.def, aspd: k.aspd, crit: 0.05,
+    timer: rand(0, 0.8), stun: 0, dead: false, gold: killGold(s) * k.g, parts: partsPerKill(s, kind), slamT: 0, shield: 0 };
 }
 function startStage() {
   const b = bonuses();
-  B = { mode: 'stage', s: S.stage, wave: 1, waves: 3, allies: S.deck.map(id => makeAlly(id, b)), enemies: [], over: false };
+  B = { mode: 'stage', s: S.stage, wave: 1, waves: 3, bonus: b, allies: S.deck.map(id => makeAlly(id, b)), enemies: [], over: false };
   spawnWave();
 }
 function startTower() {
   if (!S.deck.length) return toast('편성된 챔피언이 없습니다');
-  const b = bonuses(), f = S.tower, s = Math.round(4 + f * 2.4);
-  B = { mode: 'tower', s, floor: f, wave: 1, waves: 1, allies: S.deck.map(id => makeAlly(id, b)), enemies: [], over: false };
+  const b = bonuses(), f = S.tower, s = towerStage(f);
+  B = { mode: 'tower', s, floor: f, wave: 1, waves: 1, bonus: b, allies: S.deck.map(id => makeAlly(id, b)), enemies: [], over: false };
   const boss = BOSSES[(f - 1) % BOSSES.length];
-  B.enemies = [makeEnemy(pick(ELITES)[0], '🌀', s, 'elite'), makeEnemy(`${f}층 수호자: ${boss[0]}`, boss[1], s, 'boss'), makeEnemy(pick(ELITES)[0], '🌀', s, 'elite')];
-  B.enemies[0].icon = B.enemies[2].icon = '🟣';
+  B.enemies = [makeEnemy(pick(ELITES), s, 'elite'), makeEnemy([`${f}층 수호자: ${boss[0]}`, boss[1], boss[2]], s, 'boss'), makeEnemy(pick(ELITES), s, 'elite')];
   renderField(); switchTab('tower');
 }
 function spawnWave() {
   const s = B.s, sub = (s - 1) % 10 + 1;
   if (B.wave < B.waves) {
     const n = 3 + (s > 20 ? 1 : 0);
-    B.enemies = Array.from({ length: n }, () => { const m = pick(MOBS); return makeEnemy(m[0], m[1], s, 'mob'); });
+    B.enemies = Array.from({ length: n }, () => makeEnemy(pick(MOBS), s, 'mob'));
   } else if (sub === 10) {
-    const bo = BOSSES[Math.floor((s - 1) / 10) % BOSSES.length];
-    B.enemies = [makeEnemy(bo[0], bo[1], s, 'boss')];
+    B.enemies = [makeEnemy(BOSSES[Math.floor((s - 1) / 10) % BOSSES.length], s, 'boss')];
   } else {
     const el = ELITES[(s - 1) % ELITES.length], m = pick(MOBS);
-    B.enemies = [makeEnemy(m[0], m[1], s, 'mob'), makeEnemy(el[0], el[1], s, 'elite'), makeEnemy(m[0], m[1], s, 'mob')];
+    B.enemies = [makeEnemy(m, s, 'mob'), makeEnemy(el, s, 'elite'), makeEnemy(m, s, 'mob')];
   }
   renderField();
 }
 
+// 적 이미지: LoL 아이콘을 쓰고, 불러오지 못하면 이모지로 대체
+function monsterPic(u) {
+  if (!u.iconKey) return u.icon;
+  return `<img class="mimg" src="${mapIcon(u.iconKey)}" alt="" data-fb="${u.icon}" onerror="this.outerHTML=this.dataset.fb">`;
+}
 function unitEl(u) {
   const d = document.createElement('div');
   d.className = `unit ${u.side === 'a' ? 'ally' : 'enemy'}${u.kind === 'boss' ? ' boss' : ''}`;
@@ -194,22 +295,26 @@ function unitEl(u) {
     const o = S.owned[u.id];
     d.innerHTML = `<div class="pic" style="background-image:url(${img(u.id)})"><span class="badge">${POS[u.c.pos].icon}${o.lv}</span></div>
       <div class="info"><div class="nm">${u.c.name} <span style="color:#ffd84a">${'★'.repeat(o.star)}</span></div>
-      <div class="bar hp"><i></i><span class="sh"></span></div><div class="bar gauge"><i></i></div></div>`;
+      <div class="bar hp"><i></i><span class="sh"></span><em class="bt"></em></div><div class="bar gauge"><i></i><em class="bt"></em></div></div>`;
   } else {
-    d.innerHTML = `<div class="info" style="text-align:right"><div class="nm">${u.name}</div><div class="bar hp"><i></i><span class="sh"></span></div></div><div class="pic">${u.icon}</div>`;
+    d.innerHTML = `<div class="info" style="text-align:right"><div class="nm">${u.name}</div><div class="bar hp"><i></i><span class="sh"></span><em class="bt"></em></div></div><div class="pic">${monsterPic(u)}</div>`;
   }
   u.el = d; u.hpEl = d.querySelector('.hp i'); u.shEl = d.querySelector('.sh'); u.gEl = d.querySelector('.gauge i'); u.gBar = d.querySelector('.bar.gauge');
+  u.hpTx = d.querySelector('.hp .bt'); u.gTx = d.querySelector('.gauge .bt');
   return d;
 }
 function renderField() {
   field.allies.innerHTML = ''; field.enemies.innerHTML = '';
   B.allies.forEach(u => field.allies.appendChild(unitEl(u)));
   B.enemies.forEach(u => field.enemies.appendChild(unitEl(u)));
+  field.allies.classList.toggle('two', B.allies.length > 5);
   $('#field').classList.toggle('tower', B.mode === 'tower');
   updateStageLabel(); paintUnits();
 }
 function updateStageLabel() {
-  $('#stageLabel').textContent = B.mode === 'tower' ? `🗼 공허의 탑 ${B.floor}층` : `${stageName(B.s)} · 웨이브 ${B.wave}/${B.waves}`;
+  if (!B) return;
+  const rec = B.mode === 'tower' ? recPowerTower(B.floor) : recPowerStage(B.s);
+  $('#stageLabel').innerHTML = (B.mode === 'tower' ? `🗼 공허의 탑 ${B.floor}층` : `${stageName(B.s)} · 웨이브 ${B.wave}/${B.waves}`) + ' ' + recHTML(rec);
   $('#autoBtn').classList.toggle('on', S.auto);
   $('#autoBtn').textContent = S.auto ? '자동 진행 ON' : '반복 사냥';
   $('#speedBtn').textContent = 'x' + S.speed;
@@ -219,7 +324,8 @@ function paintUnits() {
     if (!u.el) continue;
     u.hpEl.style.width = Math.max(0, u.hp / u.maxHp * 100) + '%';
     u.shEl.style.width = Math.min(100, u.shield / u.maxHp * 100) + '%';
-    if (u.gEl) { u.gEl.style.width = u.gauge + '%'; u.gBar.classList.toggle('full', u.gauge >= 90); }
+    u.hpTx.textContent = `${fmt(Math.max(0, u.hp))}/${fmt(u.maxHp)}`;
+    if (u.gEl) { u.gEl.style.width = u.gauge + '%'; u.gBar.classList.toggle('full', u.gauge >= 90); u.gTx.textContent = `${Math.floor(u.gauge)}/100`; }
     u.el.classList.toggle('dead', u.dead);
     u.el.classList.toggle('stun', u.stun > 0 && !u.dead);
     u.el.classList.toggle('buff', u.buffT > 0 && !u.dead);
@@ -231,7 +337,7 @@ function floatText(u, text, cls) {
   if (f.querySelectorAll('.float').length > 40) return;
   const d = document.createElement('div');
   d.className = 'float ' + cls; d.textContent = text;
-  d.style.left = (r.left - fr.left + rand(10, r.width - 40)) + 'px'; d.style.top = (r.top - fr.top + 4) + 'px';
+  d.style.left = (r.left - fr.left + rand(10, Math.max(11, r.width - 40))) + 'px'; d.style.top = (r.top - fr.top + 4) + 'px';
   f.appendChild(d); setTimeout(() => d.remove(), 800);
 }
 function flash(u, cls, ms = 120) { if (!u.el) return; u.el.classList.add(cls); setTimeout(() => u.el && u.el.classList.remove(cls), ms); }
@@ -242,17 +348,22 @@ const alive = arr => arr.filter(u => !u.dead);
 function dealDamage(src, tgt, amount, cls) {
   if (tgt.dead) return 0;
   let dmg = amount * 100 / (100 + tgt.def);
+  if (tgt.dr) dmg *= 1 - tgt.dr;                   // 시너지: 받는 피해 감소
+  const shown = dmg;
   if (tgt.shield > 0) { const ab = Math.min(tgt.shield, dmg); tgt.shield -= ab; dmg -= ab; }
   tgt.hp -= dmg;
-  floatText(tgt, fmt(amount * 100 / (100 + tgt.def)), cls);
+  if (src.ls && !src.dead) src.hp = Math.min(src.maxHp, src.hp + shown * src.ls); // 시너지: 생명력 흡수
+  floatText(tgt, fmt(shown), cls);
   flash(tgt, 'hit');
   if (tgt.hp <= 0) { tgt.hp = 0; tgt.dead = true; onDeath(tgt); }
   return dmg;
 }
 function onDeath(u) {
   if (u.side === 'e') {
-    S.gold += u.gold; S.parts += u.parts;
-    floatText(u, '+' + fmt(u.gold) + '💰', 'heal');
+    const bn = B && B.bonus ? B.bonus : { gold: 0, parts: 0 };
+    const gold = u.gold * (1 + bn.gold);
+    S.gold += gold; S.parts += u.parts * (1 + bn.parts);
+    floatText(u, '+' + fmt(gold) + '💰', 'heal');
   }
 }
 function allyTarget(arr) {
@@ -330,6 +441,38 @@ function tick(dt) {
   if (!alive(B.allies).length) return defeat();
 }
 
+// 탑 보상: 층이 높을수록 많아지고, 종류도 다양하다
+function towerReward(f) {
+  const boss5 = f % 5 === 0, boss10 = f % 10 === 0;
+  return {
+    gems: Math.floor(1000 + f * 120 + (boss5 ? 5000 + f * 100 : 0)),
+    gold: Math.floor(killGold(towerStage(f)) * 150 * (boss5 ? 2 : 1)),
+    parts: Math.floor(60 + f * 8 + (boss5 ? 100 : 0)),
+    tickets: 1 + (boss5 ? 2 : 0) + Math.floor(f / 20),
+    cards: f % 3 === 0 ? 1 + Math.floor(f / 10) : 0,        // 3층마다 챔피언 카드
+    legendCards: boss10 ? 3 : 0,                              // 10층마다 전설 카드 3장
+    gear: boss5 ? Math.min(4, 2 + Math.floor(f / 25)) : -1,   // 5층마다 영웅 이상 장비 (최소 등급)
+  };
+}
+function towerRewardText(r) {
+  const t = [`💎 ${fmt(r.gems)}`, `💰 ${fmt(r.gold)}`, `⚙️ ${fmt(r.parts)}`, `🎫 ${r.tickets}`];
+  if (r.cards) t.push(`🃏 챔피언 카드 ${r.cards}장`);
+  if (r.legendCards) t.push(`🌟 전설 카드 ${r.legendCards}장`);
+  if (r.gear >= 0) t.push(`🛡️ ${GEAR_GRADES[r.gear].name} 이상 장비`);
+  return t.join(' · ');
+}
+function grantTowerReward(f) {
+  const r = towerReward(f), got = [];
+  S.gems += r.gems; S.gold += r.gold; S.parts += r.parts; S.tickets += r.tickets;
+  if (r.cards) {
+    const rar = f >= 30 ? 3 : f >= 15 ? 2 : 1, c = pick(CHAMPS.filter(c => c.rarity === rar));
+    grantCard(c, r.cards); got.push(`${c.name} 카드 ${r.cards}장`);
+  }
+  if (r.legendCards) { const c = pick(CHAMPS.filter(c => c.rarity === 3)); grantCard(c, r.legendCards); got.push(`${c.name} 카드 ${r.legendCards}장`); }
+  if (r.gear >= 0) { const res = craft(r.gear, true); if (res) got.push(`${GEAR_GRADES[res.item.grade].name} ${res.item.name}`); }
+  return { r, got };
+}
+
 function waveCleared() {
   if (B.wave < B.waves) {
     B.wave++;
@@ -342,16 +485,18 @@ function waveCleared() {
   B.over = true;
   const cur = B;
   if (B.mode === 'tower') {
-    const reward = 80 + (B.floor % 5 === 0 ? 300 : 0);
-    S.gems += reward; S.tower++;
-    toast(`🗼 ${B.floor}층 돌파! 💎 ${reward}`);
+    const f = B.floor, { r, got } = grantTowerReward(f);
+    S.tower++;
+    openModal(`<h3 style="justify-content:center">🗼 ${f}층 돌파!</h3><div style="text-align:center;line-height:1.8">${towerRewardText(r).replace(/ · /g, '<br>')}${got.length ? `<br><b style="color:var(--gold)">획득: ${got.join(', ')}</b>` : ''}</div>
+      <button class="btn big" id="closeBtn" style="width:100%;margin-top:12px">확인</button>`);
+    save();
     setTimeout(() => { startStage(); refreshPanel(); }, 1200);
     return;
   }
   let msg = `${stageName(B.s)} 클리어!`;
   if (B.s === S.maxStage) {
-    const g = (B.s % 10 === 0) ? 150 : 30;
-    S.gems += g; S.maxStage++; msg += ` 첫 클리어 💎 ${g}`;
+    const g = firstClearGems(B.s), tk = firstClearTickets(B.s);
+    S.gems += g; S.tickets += tk; S.maxStage++; msg += ` 첫 클리어 💎 ${fmt(g)}${tk ? ` 🎫 ${tk}` : ''}`;
   }
   if (S.auto) S.stage = Math.min(S.stage + 1, S.maxStage);
   log(msg);
@@ -371,39 +516,58 @@ function defeat() {
 }
 function log(m) { $('#log').textContent = m; }
 
-// 레벨업 등으로 능력치가 바뀌면 전투 중인 유닛에도 반영 (체력 비율 유지)
+// 레벨업·장비 변경 등으로 능력치가 바뀌면 전투 중인 유닛에도 반영 (체력 비율 유지)
 function refreshAllyStats() {
   if (!B) return;
-  const b = bonuses();
+  const b = bonuses(); B.bonus = b;
   for (const u of B.allies) {
     const st = calcStats(u.id, b), ratio = u.hp / u.maxHp;
-    Object.assign(u, { atk: st.atk, def: st.def, aspd: st.aspd, crit: st.crit, skill: st.skill, gaugeRate: st.gaugeRate, maxHp: st.hp });
+    Object.assign(u, { atk: st.atk, def: st.def, aspd: st.aspd, crit: st.crit, skill: st.skill, gaugeRate: st.gaugeRate, dr: st.dr, ls: st.ls, maxHp: st.hp });
     if (!u.dead) u.hp = st.hp * ratio;
     const badge = u.el && u.el.querySelector('.badge'); if (badge) badge.textContent = POS[u.c.pos].icon + S.owned[u.id].lv;
   }
 }
 
 // ===== 육성 =====
-function levelUp(id, times = 1) {
+function levelUp(id, times = 1, quiet = false) {
   const c = CHAMP_BY_ID[id], o = S.owned[id]; let n = 0;
   while (n < times && o.lv < levelCap(o.star)) {
     const cost = levelCost(o.lv, c.rarity);
     if (S.gold < cost) break;
     S.gold -= cost; o.lv++; n++;
   }
-  if (!n) toast(o.lv >= levelCap(o.star) ? `레벨 한계! ★강화가 필요합니다` : '골드가 부족합니다');
-  refreshAllyStats(); return n;
+  if (!n && !quiet) toast(o.lv >= levelCap(o.star) ? `레벨 한계! ★강화가 필요합니다` : '골드가 부족합니다');
+  if (!quiet) refreshAllyStats();
+  return n;
 }
-function starUp(id) {
-  const o = S.owned[id];
-  if (o.star >= MAX_STAR) return toast('최대 성급입니다');
-  const need = STAR_NEED[o.star - 1];
-  if (o.copies < need) return toast(`중복 카드가 ${need - o.copies}장 더 필요합니다`);
-  o.copies -= need; o.star++;
-  toast(`${CHAMP_BY_ID[id].name} ★${o.star} 달성! 레벨 한계 ${levelCap(o.star)}`);
-  refreshAllyStats();
+function starUp(id, quiet = false) {
+  const o = S.owned[id], c = CHAMP_BY_ID[id];
+  if (o.star >= MAX_STAR) { if (!quiet) toast('최대 성급입니다'); return false; }
+  const need = STAR_NEED[o.star - 1], cost = starCost(o.star, c.rarity);
+  if (o.copies < need) { if (!quiet) toast(`중복 카드가 ${need - o.copies}장 더 필요합니다`); return false; }
+  if (S.gold < cost) { if (!quiet) toast(`골드가 부족합니다 (💰 ${fmt(cost)} 필요)`); return false; }
+  S.gold -= cost; o.copies -= need; o.star++;
+  if (!quiet) { toast(`${c.name} ★${o.star} 달성! 레벨 한계 ${levelCap(o.star)}`); refreshAllyStats(); }
+  return true;
 }
 const canStar = id => { const o = S.owned[id]; return o && o.star < MAX_STAR && o.copies >= STAR_NEED[o.star - 1]; };
+// 모두 강화: 출전 챔피언부터 가능한 성급 강화 → 레벨업을 자동으로 진행
+function upgradeAll() {
+  const b = bonuses(), ids = Object.keys(S.owned).sort((a, c) =>
+    (S.deck.includes(c) - S.deck.includes(a)) || (powerOf(calcStats(c, b)) - powerOf(calcStats(a, b))));
+  let stars = 0, lvs = 0;
+  for (const id of ids) {
+    let changed = true;
+    while (changed) {
+      changed = false;
+      while (canStar(id) && starUp(id, true)) { stars++; changed = true; }
+      const n = levelUp(id, 999, true);
+      if (n) { lvs += n; changed = true; }
+    }
+  }
+  refreshAllyStats(); save();
+  toast(stars || lvs ? `모두 강화 완료: ★ 강화 ${stars}회 · 레벨 +${lvs}` : '진행할 수 있는 강화가 없습니다 (골드/카드 부족)');
+}
 
 // ===== 소환 =====
 function rollRarity() {
@@ -413,20 +577,27 @@ function rollRarity() {
   for (let i = 3; i >= 0; i--) { r -= RARITY[i].rate; if (r <= 0) return i; }
   return 0;
 }
-function gacha(n) {
+// 챔피언 카드 지급 (신규면 획득, 중복이면 성급 재료, ★6 이후는 골드로 전환)
+function grantCard(c, n = 1) {
+  let isNew = false;
+  for (let i = 0; i < n; i++) {
+    if (!S.owned[c.id]) { S.owned[c.id] = { lv: 1, star: 1, copies: 0 }; isNew = true; }
+    else if (S.owned[c.id].star >= MAX_STAR) S.gold += 500 * (c.rarity + 1) * S.maxStage;
+    else S.owned[c.id].copies++;
+  }
+  return isNew;
+}
+function gacha(n, useTicket = false) {
   const cost = n === 10 ? PULL10_COST : PULL_COST * n;
-  if (S.gems < cost) return toast('💎 보석이 부족합니다');
-  S.gems -= cost;
+  if (useTicket) { if (S.tickets < n) return toast('🎫 소환권이 부족합니다'); S.tickets -= n; }
+  else { if (S.gems < cost) return toast('💎 보석이 부족합니다'); S.gems -= cost; }
   const res = [];
   for (let i = 0; i < n; i++) {
     let r = rollRarity();
     if (n === 10 && i === 9 && !res.some(x => x.r >= 2)) r = Math.max(r, 2); // 10연차 영웅 이상 1회 보장
     if (r === 3) S.pity = 0;
-    const pool = CHAMPS.filter(c => c.rarity === r), c = pick(pool);
-    const isNew = !S.owned[c.id];
-    if (isNew) S.owned[c.id] = { lv: 1, star: 1, copies: 0 };
-    else if (S.owned[c.id].star >= MAX_STAR && S.owned[c.id].copies >= 0) { S.gold += 500 * (r + 1) * S.maxStage; }
-    else S.owned[c.id].copies++;
+    const c = pick(CHAMPS.filter(c => c.rarity === r));
+    const isNew = grantCard(c);
     S.pulls++;
     res.push({ c, r, isNew });
   }
@@ -435,101 +606,189 @@ function gacha(n) {
 }
 
 // ===== 장비 (대장간) =====
-function gearVal(g) { return GEAR_GRADES[g.grade].base * (1 + g.ilvl * 0.05) / 100; }
-function craft() {
-  if (S.parts < CRAFT_COST) { if (!S.autoCraft) toast('⚙️ 마법공학 부품이 부족합니다'); return null; }
-  S.parts -= CRAFT_COST;
+function rollGear(minGrade = 0) {
   let r = Math.random() * 100, grade = 0;
   for (let i = GEAR_GRADES.length - 1; i >= 0; i--) { r -= GEAR_GRADES[i].rate; if (r <= 0) { grade = i; break; } }
-  const slot = pick(Object.keys(GEAR_SLOTS));
-  const item = { slot, grade, ilvl: S.maxStage, name: GEAR_SLOTS[slot].items[grade], stat: slot === 'acc' ? pick(Object.keys(ACC_STATS)) : slot === 'weapon' ? 'atk' : 'hp' };
-  const cur = S.gear[slot];
+  grade = Math.max(grade, minGrade);
+  const slot = pick(GEAR_KEYS), main = GEAR_SLOTS[slot].main;
+  const others = Object.keys(GEAR_STATS).filter(k => k !== main).sort(() => Math.random() - 0.5);
+  const keys = [main, ...others].slice(0, GEAR_GRADES[grade].n);
+  return { slot, grade, ilvl: S.maxStage, plus: 0, name: GEAR_SLOTS[slot].items[grade], stats: keys.map(k => ({ k, r: rand(0.9, 1.1) })) };
+}
+function craft(minGrade = 0, free = false) {
+  if (!free) {
+    if (S.parts < CRAFT_COST) { if (!S.autoCraft) toast('⚙️ 마법공학 부품이 부족합니다'); return null; }
+    S.parts -= CRAFT_COST;
+  }
+  const item = rollGear(minGrade), cur = S.gear[item.slot];
   let result;
-  if (!cur || gearVal(item) > gearVal(cur)) {
+  if (!cur || gearScore(item) > gearScore(cur)) {
     if (cur) S.gold += sellPrice(cur);
-    S.gear[slot] = item; result = 'equip'; refreshAllyStats();
+    S.gear[item.slot] = item; result = 'equip'; refreshAllyStats();
   } else { S.gold += sellPrice(item); result = 'sell'; }
   return { item, result };
 }
-const sellPrice = g => Math.floor(20 * (g.grade + 1) * Math.pow(1.1, g.ilvl));
-function gearStatText(g) {
-  const v = gearVal(g);
-  if (g.slot === 'weapon') return `공격력 +${(v * 100).toFixed(1)}%`;
-  if (g.slot === 'armor') return `체력·방어 +${(v * 100).toFixed(1)}%`;
-  return `${ACC_STATS[g.stat]} +${(v * 100 * (g.stat === 'crit' ? 0.35 : 1)).toFixed(1)}%`;
+// 장비 강화 (골드 소모, 확률형). +1 이상 올릴수록 비용이 크게 늘고 성공 확률은 낮아진다
+const enhanceCost = g => Math.floor(300 * (g.grade + 1) * Math.pow(1.32, g.plus) * (1 + g.ilvl * 0.1));
+function enhanceOdds(plus) {
+  const great = 0.04;
+  const success = Math.max(0.18, 0.62 - plus * 0.03);
+  const minus = plus >= 4 ? Math.min(0.12, 0.01 + 0.006 * plus) : 0;
+  const destroy = plus >= 8 ? Math.min(0.03, 0.002 + 0.0015 * (plus - 8)) : 0;
+  return { great, success, minus, destroy, fail: Math.max(0, 1 - great - success - minus - destroy) };
 }
+function enhance(slot) {
+  const g = S.gear[slot]; if (!g) return null;
+  if (g.plus >= MAX_PLUS) { toast('최대 강화입니다'); return null; }
+  const cost = enhanceCost(g);
+  if (S.gold < cost) { toast(`골드가 부족합니다 (💰 ${fmt(cost)} 필요)`); return null; }
+  S.gold -= cost;
+  const o = enhanceOdds(g.plus); let r = Math.random(), res;
+  if ((r -= o.destroy) < 0) { S.gear[slot] = null; res = { type: 'destroy', delta: 0 }; }
+  else if ((r -= o.minus) < 0) { g.plus--; res = { type: 'minus', delta: -1 }; }
+  else if ((r -= o.great) < 0) { const d = Math.min(MAX_PLUS - g.plus, 2 + Math.floor(Math.random() * 4)); g.plus += d; res = { type: 'great', delta: d }; }
+  else if ((r -= o.success) < 0) { g.plus++; res = { type: 'success', delta: 1 }; }
+  else res = { type: 'fail', delta: 0 };
+  res.name = g.name; res.plus = g.plus;
+  refreshAllyStats(); save();
+  return res;
+}
+const ENH_MSG = { great: ['✨ 대성공!', '#ffd84a'], success: ['성공', '#6ee87f'], fail: ['실패 (변화 없음)', '#8a93a6'], minus: ['⚠️ 실패 — 강화 단계 하락', '#ff9c3b'], destroy: ['💥 장비가 파괴되었습니다…', '#ff4f6d'] };
 
 // ===== UI =====
-let tab = 'heroes', heroFilter = 'all', lastPull = null, lastCraft = null;
+let tab = 'heroes', heroFilter = 'all', rarFilter = 'all', heroSort = 'power', lastPull = null, lastCraft = null, forgeSel = 'weapon', lastEnh = null, showAllSyn = false;
+const SORTS = { power: '전투력', hp: '체력', atk: '공격력', def: '방어력', aspd: '공격 속도', crit: '치명타' };
 function switchTab(t) {
   tab = t;
   document.querySelectorAll('#nav button').forEach(b => b.classList.toggle('on', b.dataset.tab === t));
   refreshPanel();
 }
 function refreshTop() {
-  $('#gold').textContent = fmt(S.gold); $('#gems').textContent = fmt(S.gems); $('#parts').textContent = fmt(S.parts);
+  $('#gold').textContent = fmt(S.gold); $('#gems').textContent = fmt(S.gems); $('#parts').textContent = fmt(S.parts); $('#tickets').textContent = fmt(S.tickets);
   $('#power').textContent = fmt(teamPower());
 }
 const stars = n => '★'.repeat(n);
-function champCard(c, extra = '') {
+function sortVal(key, st) {
+  if (key === 'power') return powerOf(st);
+  if (key === 'crit') return st.crit;
+  return st[key];
+}
+function sortText(key, v) { return key === 'crit' ? Math.round(v * 100) + '%' : key === 'aspd' ? v.toFixed(2) : fmt(v); }
+function champCard(c, extra = '', sk = null) {
   const o = S.owned[c.id];
   return `<div class="card ${o ? '' : 'locked'} ${S.deck.includes(c.id) ? 'indeck' : ''}" data-id="${c.id}" style="border-color:${RARITY[c.rarity].color}">
     <span class="pos">${POS[c.pos].icon}</span><img loading="lazy" src="${img(c.id)}" alt="">
     ${o ? `<div class="stars">${stars(o.star)}</div>` : ''}${o && canStar(c.id) ? '<span class="up">★UP</span>' : ''}${extra}
-    <div class="cn">${c.name}</div><div class="cl">${o ? 'Lv.' + o.lv : RARITY[c.rarity].name}</div></div>`;
+    <div class="cn">${c.name}</div><div class="cl">${o ? 'Lv.' + o.lv : RARITY[c.rarity].name}</div>${sk ? `<div class="cv">${sk}</div>` : ''}</div>`;
+}
+function heroesHTML() {
+  const owned = CHAMPS.filter(c => S.owned[c.id]).length, b = bonuses();
+  let list = CHAMPS.filter(c => (heroFilter === 'all' || c.pos === heroFilter) && (rarFilter === 'all' || c.rarity === rarFilter));
+  const sv = new Map(list.map(c => [c.id, sortVal(heroSort, calcStats(c.id, b))]));
+  // 정렬: ① 출전 중 ② 보유 ③ 선택한 능력치 높은 순 (기본 전투력)
+  list.sort((a, c) => (S.deck.includes(c.id) - S.deck.includes(a.id)) || (!!S.owned[c.id] - !!S.owned[a.id]) || (sv.get(c.id) - sv.get(a.id)));
+  const chips = (arr, cur, attr) => arr.map(([k, n]) => `<button class="chip ${String(cur) === String(k) ? 'on' : ''}" data-${attr}="${k}">${n}</button>`).join('');
+  return `<h3>챔피언 도감 <span class="sub">보유 ${owned} / ${CHAMPS.length}</span></h3>
+    <div class="row" style="margin-bottom:8px"><button class="btn teal big" id="upAll">⬆️ 모두 강화 (★강화 → 레벨업)</button></div>
+    <div class="filters">${chips([['all', '전체'], ...Object.values(POS).map(x => [x.key, x.icon + ' ' + x.name + ' ' + CHAMPS.filter(c => c.pos === x.key).length])], heroFilter, 'f')}</div>
+    <div class="filters">${chips([['all', '모든 등급'], ...RARITY.map(r => [r.key, `<span style="color:${r.color}">●</span> ${r.name} ${CHAMPS.filter(c => c.rarity === r.key).length}`])], rarFilter, 'rf')}</div>
+    <div class="filters"><span class="sub" style="align-self:center">정렬</span>${chips(Object.entries(SORTS), heroSort, 'sort')}<span class="sub" style="align-self:center">· 출전 중인 챔피언이 항상 맨 앞</span></div>
+    <div class="grid">${list.map(c => champCard(c, '', `${SORTS[heroSort]} ${sortText(heroSort, sv.get(c.id))}`)).join('')}</div>`;
+}
+function synergyHTML(b) {
+  const st = synergyState();
+  const act = st.filter(x => x.tier >= 0), inact = st.filter(x => x.tier < 0 && x.count > 0);
+  const chip = (x, on) => {
+    const t = x.s.tiers[Math.max(0, x.tier)];
+    return `<span class="${on ? 'act' : ''}" title="${x.s.desc}">${x.s.icon} ${x.s.name} ${x.count}/${t[0]} : ${bonusText(t[1])}</span>`;
+  };
+  const total = Object.fromEntries(BONUS_KEYS.map(k => [k, b[k]]));
+  const nameList = x => x.s.kind === 'region' ? x.s.members.map(id => CHAMP_BY_ID[id].name).join(', ') : x.s.desc;
+  return `<div class="syn">
+      <span class="${b.posCount >= 3 ? 'act' : ''}">🤝 포지션 ${b.posCount}/5 : 공격력·체력 +${Math.round(b.team * 100)}%</span>
+      ${Object.entries(TAGS).map(([k, t]) => { const n = S.deck.filter(id => CHAMP_BY_ID[id].tag === k).length; return `<span class="${b.tags[k] ? 'act' : ''}">${t.name} ${n} : ${b.tags[k] ? t.desc(b.tags[k]) : '2명부터 ' + t.syn + ' 시너지'}</span>`; }).join('')}
+    </div>
+    <h3 style="margin-top:12px">활성 시너지 <span class="sub">${act.length}개 · 지역/조합/단독</span></h3>
+    <div class="syn">${act.length ? act.map(x => chip(x, true)).join('') : '<span>활성 시너지가 없습니다</span>'}${inact.map(x => chip(x, false)).join('')}</div>
+    <div class="box" style="margin-top:8px"><div class="sub">전체 보너스 합계 (시너지 + 장비 + 포지션/역할군)</div><div class="syn" style="margin-top:4px">${Object.entries(total).filter(([, v]) => v > 0).map(([k, v]) => `<span class="act">${BONUS_NAMES[k]} +${Math.round(v * 100)}%</span>`).join('') || '<span>없음</span>'}</div></div>
+    <button class="chip" id="synToggle" style="margin-top:6px">${showAllSyn ? '▲ 시너지 도감 닫기' : '▼ 전체 시너지 도감 보기 (' + SYNERGIES.length + '개)'}</button>
+    ${showAllSyn ? `<div class="synlist">${st.map(x => `<div class="si ${x.tier >= 0 ? 'on' : ''}"><b>${x.s.icon} ${x.s.name}</b> <span class="sub">[${{ region: '지역', squad: '조합', solo: '단독' }[x.s.kind]}] ${x.count}명 편성</span>
+        <div class="sub">${nameList(x)}</div>${x.s.tiers.map((t, i) => `<div class="${x.tier >= i ? 'tier on' : 'tier'}">${t[0]}명 : ${bonusText(t[1])}</div>`).join('')}</div>`).join('')}</div>` : ''}`;
+}
+function deckHTML() {
+  const b = bonuses();
+  const slots = Array.from({ length: MAX_DECK }, (_, i) => S.deck[i]);
+  return `<div class="box"><h3>출전 편성 <span class="sub">최대 ${MAX_DECK}명 · 슬롯을 누르면 해제 (${S.deck.length}/${MAX_DECK})</span></h3>
+      <div class="slots">${slots.map((id, i) => id ? `<div class="slot filled" data-slot="${i}" style="border-color:${RARITY[CHAMP_BY_ID[id].rarity].color}"><img src="${img(id)}"><div>${POS[CHAMP_BY_ID[id].pos].icon} ${CHAMP_BY_ID[id].name}</div></div>` : `<div class="slot">빈 슬롯</div>`).join('')}</div>
+      ${synergyHTML(b)}
+      <div class="row" style="margin-top:10px"><button class="btn teal big" id="autoDeck">⚡ 자동 편성 (포지션별 최강 + 전투력 순)</button></div></div>
+    <div class="box dlist"><h3>빠른 레벨업</h3>${S.deck.map(id => { const c = CHAMP_BY_ID[id], o = S.owned[id], cap = levelCap(o.star), d = o.lv >= cap ? 'disabled' : ''; return `<div class="di"><img src="${img(id)}"><div class="grow"><b>${c.name}</b> ${stars(o.star)}<br>Lv.${o.lv}/${cap} · 💰${o.lv >= cap ? '-' : fmt(levelCost(o.lv, c.rarity))}</div>
+        <button class="btn" data-lv="${id}" data-n="1" ${d}>+1</button><button class="btn" data-lv="${id}" data-n="10" ${d}>+10</button><button class="btn teal" data-lv="${id}" data-n="999" ${d}>MAX</button></div>`; }).join('')}</div>
+    <h3>보유 챔피언 <span class="sub">눌러서 편성에 추가</span></h3>
+    <div class="grid">${CHAMPS.filter(c => S.owned[c.id]).sort((a, c) => powerOf(calcStats(c.id, b)) - powerOf(calcStats(a.id, b))).map(c => champCard(c)).join('')}</div>`;
+}
+function gachaHTML() {
+  const featured = CHAMPS.filter(c => c.rarity === 3).slice(0, 5);
+  return `<div class="banner-art"><div class="t">협곡 소환</div><div class="sub">전설 확정까지 <b style="color:#ffb52e">${PITY - S.pity}</b>회 · 총 ${S.pulls}회 소환</div>
+        <div class="imgs">${featured.map(c => `<img src="${img(c.id)}">`).join('')}</div></div>
+      <div class="row"><button class="btn big" id="pull1">1회 소환<br>💎 ${PULL_COST}</button><button class="btn teal big" id="pull10">10회 소환<br>💎 ${PULL10_COST}</button></div>
+      <div class="row" style="margin-top:8px"><button class="btn big" id="pullTk" ${S.tickets < 1 ? 'disabled' : ''}>🎫 소환권으로 1회 (보유 ${S.tickets})</button></div>
+      <div class="box" style="margin-top:10px"><div class="rates">${RARITY.map(r => `<span style="color:${r.color}">${r.name} ${r.rate}% (${CHAMPS.filter(c => c.rarity === r.key).length}종)</span>`).join('')}</div>
+        <div class="sub" style="margin-top:6px">· 10회 소환 시 영웅 이상 1회 보장 · ${PITY}회 내 전설 확정<br>· 중복 획득 시 성급(★) 강화 재료가 됩니다 · ★6 이후 중복은 골드로 전환<br>· 🎫 소환권은 스테이지 보스 첫 클리어, 공허의 탑에서 얻습니다</div></div>
+      ${lastPull ? `<h3>소환 결과</h3><div class="grid pull-res">${lastPull.map((x, i) => champCard(x.c, x.isNew ? '<span class="new">NEW</span>' : '').replace('class="card', `style="animation-delay:${i * 0.06}s" class="card ${x.r === 3 ? 'leg' : x.r === 2 ? 'epic' : ''}`)).join('')}</div>` : ''}`;
+}
+function gearCardHTML(k) {
+  const s = GEAR_SLOTS[k], g = S.gear[k];
+  if (!g) return `<div class="gi ${forgeSel === k ? 'sel' : ''}" data-gs="${k}"><div class="ic">${s.icon}</div><div class="sub">${s.name} 없음</div></div>`;
+  return `<div class="gi ${forgeSel === k ? 'sel' : ''}" data-gs="${k}" style="border-color:${GEAR_GRADES[g.grade].color}"><div class="ic">${s.icon}</div>
+    <div class="gn" style="color:${GEAR_GRADES[g.grade].color}">${g.name}${g.plus ? ` <span style="color:#ffd84a">+${g.plus}</span>` : ''}</div>
+    <div>${GEAR_GRADES[g.grade].name} · iLv ${g.ilvl}</div><div class="sub">능력치 ${g.stats.length}개</div></div>`;
+}
+function forgeDetailHTML() {
+  const s = GEAR_SLOTS[forgeSel], g = S.gear[forgeSel];
+  if (!g) return `<div class="sub" style="text-align:center">${s.icon} ${s.name} 칸이 비어 있습니다. 제작으로 획득하세요.</div>`;
+  const o = enhanceOdds(g.plus), pc = v => (v * 100).toFixed(v < 0.1 && v > 0 ? 1 : 0) + '%';
+  const e = lastEnh && lastEnh.slot === forgeSel ? ENH_MSG[lastEnh.type] : null;
+  return `<div style="font-weight:700;color:${GEAR_GRADES[g.grade].color}">${s.icon} [${GEAR_GRADES[g.grade].name}] ${g.name} <span style="color:#ffd84a">+${g.plus}/${MAX_PLUS}</span></div>
+    <div class="gstats">${g.stats.map(st => `<div>${st.k === s.main ? '⭐ ' : '· '}${gearStatLine(g, st)}</div>`).join('')}</div>
+    <div class="sub" style="margin:6px 0">성공 시 능력치 +12%씩 (강화 단계당) · 판매가 💰 ${fmt(sellPrice(g))}</div>
+    ${g.plus >= MAX_PLUS ? '<div class="sub">최대 강화입니다</div>' : `<div class="odds"><span style="color:#ffd84a">대성공 ${pc(o.great)} (+2~5)</span><span style="color:#6ee87f">성공 ${pc(o.success)} (+1)</span><span>실패 ${pc(o.fail)}</span>${o.minus ? `<span style="color:#ff9c3b">하락 ${pc(o.minus)} (-1)</span>` : ''}${o.destroy ? `<span style="color:#ff4f6d">파괴 ${pc(o.destroy)}</span>` : ''}</div>
+      <button class="btn teal big" id="enhBtn" style="width:100%;margin-top:8px">강화 💰 ${fmt(enhanceCost(g))}</button>`}
+    <div id="enhRes" style="min-height:20px;margin-top:6px;font-weight:700;text-align:center;color:${e ? e[1] : 'inherit'}">${e ? `${e[0]}${lastEnh.delta > 0 ? ` (+${lastEnh.delta})` : ''}` : ''}</div>`;
+}
+function renderGearBox() {
+  const gb = $('#gearBox'); if (gb) gb.innerHTML = GEAR_KEYS.map(gearCardHTML).join('');
+  const fd = $('#forgeDetail'); if (fd) fd.innerHTML = forgeDetailHTML();
+  refreshTop();
+}
+function forgeHTML() {
+  return `<div class="box"><h3>장착 장비 <span class="sub">팀 전체에 적용 · 눌러서 강화</span></h3><div class="gear" id="gearBox">${GEAR_KEYS.map(gearCardHTML).join('')}</div>
+      <div class="box" id="forgeDetail" style="margin:10px 0 0">${forgeDetailHTML()}</div></div>
+      <div class="box oven"><div class="big" id="ovenIcon">🔨</div><div class="sub">마법공학 부품 ${CRAFT_COST}개로 장비를 제작합니다. (6칸: 무기·방어구·투구·장갑·신발·장신구)<br>더 좋은 장비는 자동 장착되고 장착 상태가 바로 갱신됩니다. 나머지는 골드로 판매됩니다.<br>등급이 높을수록 능력치 개수와 수치가 늘어납니다 (일반 1개 … 신화 5개). 장비 레벨(iLv)은 최고 스테이지를 따라갑니다.</div>
+        <div class="row" style="margin-top:10px"><button class="btn big" id="craftBtn">제작 (⚙️ ${CRAFT_COST})</button><button class="btn big ${S.autoCraft ? 'teal' : ''}" id="autoCraftBtn">자동 제작 ${S.autoCraft ? 'ON' : 'OFF'}</button></div>
+        <div id="craftRes" style="margin-top:10px;min-height:20px">${lastCraft ? craftResText(lastCraft) : ''}</div>
+        <div class="rates" style="justify-content:center;margin-top:8px">${GEAR_GRADES.map(g => `<span style="color:${g.color}">${g.name} ${g.rate}% (${g.n}옵션)</span>`).join('')}</div></div>`;
+}
+function towerHTML() {
+  const f = S.tower, boss = BOSSES[(f - 1) % BOSSES.length], e = enemyStat(towerStage(f)), r = towerReward(f);
+  return `<div class="box" style="text-align:center"><h3 style="justify-content:center">🗼 공허의 탑</h3>
+      <div style="font-size:42px">${boss[2] ? `<img class="mimg big" src="${mapIcon(boss[2])}" alt="" data-fb="${boss[1]}" onerror="this.outerHTML=this.dataset.fb">` : boss[1]}</div><div style="font-size:18px;font-weight:900">${f}층 수호자: ${boss[0]}</div>
+      <div class="sub">보스 체력 ${fmt(e.hp * 10)} · 공격력 ${fmt(e.atk * 2.2)} · 정예 2마리 동반</div>
+      <div style="margin:8px 0">${recHTML(recPowerTower(f))}</div>
+      <div class="sub">내 전투력 ⚔️ ${fmt(teamPower())}</div>
+      <div class="box" style="margin:10px 0;text-align:left"><div class="sub">이 층의 보상</div><div style="line-height:1.8">${towerRewardText(r).replace(/ · /g, '<br>')}</div>
+        <div class="sub" style="margin-top:4px">${f % 5 === 0 ? '🌟 보스 층 보너스 포함 · ' : ''}층이 높을수록 보상이 늘어납니다 (5층: 보석·장비, 10층: 전설 카드)</div></div>
+      <button class="btn teal big" id="towerBtn" style="width:100%;margin-top:6px" ${B && B.mode === 'tower' ? 'disabled' : ''}>${B && B.mode === 'tower' ? '도전 중…' : '도전하기'}</button></div>
+      <div class="box sub">공허의 탑은 층마다 강해지는 보스에 도전해 다양한 보상을 얻는 콘텐츠입니다. 실패해도 잃는 것은 없습니다.</div>`;
 }
 function refreshPanel() {
   refreshTop();
   const p = $('#panel');
-  if (tab === 'heroes') {
-    const owned = CHAMPS.filter(c => S.owned[c.id]).length;
-    let list = CHAMPS.filter(c => heroFilter === 'all' || c.pos === heroFilter);
-    list = list.sort((a, b) => (!!S.owned[b.id] - !!S.owned[a.id]) || (b.rarity - a.rarity) || ((S.owned[b.id]?.lv || 0) - (S.owned[a.id]?.lv || 0)));
-    p.innerHTML = `<h3>챔피언 도감 <span class="sub">보유 ${owned} / ${CHAMPS.length}</span></h3>
-      <div class="filters">${[['all', '전체'], ...Object.values(POS).map(x => [x.key, x.icon + ' ' + x.name])].map(([k, n]) => `<button class="chip ${heroFilter === k ? 'on' : ''}" data-f="${k}">${n} ${k === 'all' ? '' : CHAMPS.filter(c => c.pos === k).length}</button>`).join('')}</div>
-      <div class="grid">${list.map(c => champCard(c)).join('')}</div>`;
-  } else if (tab === 'deck') {
-    const b = bonuses();
-    const slots = Array.from({ length: 5 }, (_, i) => S.deck[i]);
-    p.innerHTML = `<div class="box"><h3>출전 편성 <span class="sub">최대 5명 · 슬롯을 누르면 해제</span></h3>
-      <div class="slots">${slots.map((id, i) => id ? `<div class="slot filled" data-slot="${i}" style="border-color:${RARITY[CHAMP_BY_ID[id].rarity].color}"><img src="${img(id)}"><div>${POS[CHAMP_BY_ID[id].pos].icon} ${CHAMP_BY_ID[id].name}</div></div>` : `<div class="slot">빈 슬롯</div>`).join('')}</div>
-      <div class="syn">
-        <span class="${b.posCount >= 3 ? 'act' : ''}">🤝 포지션 ${b.posCount}/5 : 공격력·체력 +${Math.round(b.team * 100)}%</span>
-        ${Object.entries(TAGS).map(([k, t]) => { const n = S.deck.filter(id => CHAMP_BY_ID[id].tag === k).length; return `<span class="${b.tags[k] ? 'act' : ''}">${t.name} ${n} : ${b.tags[k] ? t.desc(b.tags[k]) : '2명부터 ' + t.syn + ' 시너지'}</span>`; }).join('')}
-      </div>
-      <div class="row" style="margin-top:10px"><button class="btn teal big" id="autoDeck">⚡ 자동 편성 (포지션별 최강)</button></div></div>
-      <div class="box dlist"><h3>빠른 레벨업</h3>${S.deck.map(id => { const c = CHAMP_BY_ID[id], o = S.owned[id], cap = levelCap(o.star); return `<div class="di"><img src="${img(id)}"><div class="grow"><b>${c.name}</b> ${stars(o.star)}<br>Lv.${o.lv}/${cap} · 💰${fmt(levelCost(o.lv, c.rarity))}</div>
-        <button class="btn" data-lv="${id}" data-n="1" ${o.lv >= cap ? 'disabled' : ''}>+1</button><button class="btn" data-lv="${id}" data-n="10" ${o.lv >= cap ? 'disabled' : ''}>+10</button></div>`; }).join('')}</div>
-      <h3>보유 챔피언 <span class="sub">눌러서 편성에 추가</span></h3>
-      <div class="grid">${CHAMPS.filter(c => S.owned[c.id]).sort((a, b) => powerOf(calcStats(b.id)) - powerOf(calcStats(a.id))).map(c => champCard(c)).join('')}</div>`;
-  } else if (tab === 'gacha') {
-    const featured = CHAMPS.filter(c => c.rarity === 3).slice(0, 5);
-    p.innerHTML = `<div class="banner-art"><div class="t">협곡 소환</div><div class="sub">전설 확정까지 <b style="color:#ffb52e">${PITY - S.pity}</b>회 · 총 ${S.pulls}회 소환</div>
-        <div class="imgs">${featured.map(c => `<img src="${img(c.id)}">`).join('')}</div></div>
-      <div class="row"><button class="btn big" id="pull1">1회 소환<br>💎 ${PULL_COST}</button><button class="btn teal big" id="pull10">10회 소환<br>💎 ${PULL10_COST}</button></div>
-      <div class="box" style="margin-top:10px"><div class="rates">${RARITY.map(r => `<span style="color:${r.color}">${r.name} ${r.rate}% (${CHAMPS.filter(c => c.rarity === r.key).length}종)</span>`).join('')}</div>
-        <div class="sub" style="margin-top:6px">· 10회 소환 시 영웅 이상 1회 보장 · ${PITY}회 내 전설 확정<br>· 중복 획득 시 성급(★) 강화 재료가 됩니다 · ★6 이후 중복은 골드로 전환</div></div>
-      ${lastPull ? `<h3>소환 결과</h3><div class="grid pull-res">${lastPull.map((x, i) => champCard(x.c, x.isNew ? '<span class="new">NEW</span>' : '').replace('class="card', `style="animation-delay:${i * 0.06}s" class="card`)).join('')}</div>` : ''}`;
-  } else if (tab === 'forge') {
-    p.innerHTML = `<div class="box"><h3>장착 장비 <span class="sub">팀 전체에 적용</span></h3><div class="gear">${Object.entries(GEAR_SLOTS).map(([k, s]) => { const g = S.gear[k]; return g ? `<div class="gi" style="border-color:${GEAR_GRADES[g.grade].color}"><div class="ic">${s.icon}</div><div class="gn" style="color:${GEAR_GRADES[g.grade].color}">${g.name}</div><div>${GEAR_GRADES[g.grade].name} · iLv ${g.ilvl}</div><div style="color:var(--teal)">${gearStatText(g)}</div></div>` : `<div class="gi"><div class="ic">${s.icon}</div><div class="sub">${s.name} 없음</div></div>`; }).join('')}</div></div>
-      <div class="box oven"><div class="big" id="ovenIcon">🔨</div><div class="sub">마법공학 부품 ${CRAFT_COST}개로 장비를 제작합니다.<br>더 좋은 장비는 자동 장착, 나머지는 골드로 판매됩니다.<br>장비 레벨(iLv)은 최고 스테이지를 따라갑니다.</div>
-        <div class="row" style="margin-top:10px"><button class="btn big" id="craftBtn">제작 (⚙️ ${CRAFT_COST})</button><button class="btn big ${S.autoCraft ? 'teal' : ''}" id="autoCraftBtn">자동 제작 ${S.autoCraft ? 'ON' : 'OFF'}</button></div>
-        <div id="craftRes" style="margin-top:10px;min-height:20px">${lastCraft ? craftResText(lastCraft) : ''}</div>
-        <div class="rates" style="justify-content:center;margin-top:8px">${GEAR_GRADES.map(g => `<span style="color:${g.color}">${g.name} ${g.rate}%</span>`).join('')}</div></div>`;
-  } else if (tab === 'tower') {
-    const f = S.tower, boss = BOSSES[(f - 1) % BOSSES.length], s = Math.round(4 + f * 2.4), e = enemyStat(s);
-    p.innerHTML = `<div class="box" style="text-align:center"><h3 style="justify-content:center">🗼 공허의 탑</h3>
-      <div style="font-size:42px">${boss[1]}</div><div style="font-size:18px;font-weight:900">${f}층 수호자: ${boss[0]}</div>
-      <div class="sub">보스 체력 ${fmt(e.hp * 10)} · 공격력 ${fmt(e.atk * 2.2)} · 정예 2마리 동반</div>
-      <div class="sub" style="margin:8px 0">보상: 💎 80 ${f % 5 === 0 ? '+ 5층 보너스 💎 300' : ''}</div>
-      <div class="sub">내 전투력 ⚔️ ${fmt(teamPower())}</div>
-      <button class="btn teal big" id="towerBtn" style="width:100%;margin-top:10px" ${B && B.mode === 'tower' ? 'disabled' : ''}>${B && B.mode === 'tower' ? '도전 중…' : '도전하기'}</button></div>
-      <div class="box sub">공허의 탑은 층마다 강해지는 보스에 도전해 보석을 얻는 콘텐츠입니다. 실패해도 잃는 것은 없습니다.</div>`;
-  }
+  p.innerHTML = ({ heroes: heroesHTML, deck: deckHTML, gacha: gachaHTML, forge: forgeHTML, tower: towerHTML })[tab]();
 }
 function craftResText(r) {
   const g = r.item;
-  return `<span style="color:${GEAR_GRADES[g.grade].color};font-weight:700">[${GEAR_GRADES[g.grade].name}] ${g.name}</span> ${gearStatText(g)} → ${r.result === 'equip' ? '<b style="color:var(--teal)">장착!</b>' : `판매 💰${fmt(sellPrice(g))}`}`;
+  return `<span style="color:${GEAR_GRADES[g.grade].color};font-weight:700">[${GEAR_GRADES[g.grade].name}] ${g.name}</span> <span class="sub">${GEAR_SLOTS[g.slot].name} · 능력치 ${g.stats.length}개 (${g.stats.map(st => gearStatLine(g, st)).join(', ')})</span> → ${r.result === 'equip' ? '<b style="color:var(--teal)">장착!</b>' : `판매 💰${fmt(sellPrice(g))}`}`;
 }
 
 function openModal(html) { $('#modalBox').innerHTML = html; $('#modal').classList.remove('hidden'); }
@@ -540,7 +799,7 @@ function showDetail(id) {
   detailId = id;
   const c = CHAMP_BY_ID[id], o = S.owned[id], st = calcStats(id), r = RARITY[c.rarity];
   const cap = o ? levelCap(o.star) : 0, need = o && o.star < MAX_STAR ? STAR_NEED[o.star - 1] : 0;
-  openModal(`<div class="dhead"><img src="${img(id)}"><div>
+  openModal(`<div class="dhead"><img src="${img(id)}" style="border-color:${r.color};box-shadow:0 0 12px ${r.color}88"><div>
       <div class="nm">${c.name}</div>
       <span class="tag" style="color:${r.color};border:1px solid ${r.color}">${r.name}</span><span class="tag" style="color:${POS[c.pos].color}">${POS[c.pos].icon} ${POS[c.pos].name}</span><span class="tag">${TAGS[c.tag].name}</span>
       <div style="color:#ffd84a;margin-top:4px">${o ? stars(o.star) + `<span style="color:#555">${'★'.repeat(MAX_STAR - o.star)}</span>` : '미보유'}</div>
@@ -555,7 +814,7 @@ function showDetail(id) {
     ${o ? `<div class="box" style="margin-top:10px">
       <div class="row"><div style="flex:1">레벨업 비용 💰 <b>${o.lv >= cap ? '-' : fmt(levelCost(o.lv, c.rarity))}</b></div>
         <button class="btn" data-dlv="1" ${o.lv >= cap ? 'disabled' : ''}>+1</button><button class="btn" data-dlv="10" ${o.lv >= cap ? 'disabled' : ''}>+10</button><button class="btn" data-dlv="999" ${o.lv >= cap ? 'disabled' : ''}>MAX</button></div>
-      <div style="margin-top:10px">성급 강화 (중복 카드) ${o.star >= MAX_STAR ? '— 최대' : `${o.copies} / ${need}`}</div>
+      <div style="margin-top:10px">성급 강화 (중복 카드) ${o.star >= MAX_STAR ? '— 최대' : `${o.copies} / ${need} · 💰 ${fmt(starCost(o.star, c.rarity))}`}</div>
       <div class="progress"><i style="width:${o.star >= MAX_STAR ? 100 : Math.min(100, o.copies / need * 100)}%"></i></div>
       <div class="row"><div class="sub" style="flex:1">★당 능력치 대폭 상승 + 레벨 한계 +20</div><button class="btn teal" id="starBtn" ${canStar(id) ? '' : 'disabled'}>★ 강화</button></div></div>
       <div class="row"><button class="btn big" id="deckToggle">${S.deck.includes(id) ? '편성 해제' : '편성에 추가'}</button><button class="btn big" id="closeBtn">닫기</button></div>`
@@ -575,19 +834,37 @@ async function loadSpell(c) {
 function toggleDeck(id) {
   const i = S.deck.indexOf(id);
   if (i >= 0) { if (S.deck.length <= 1) return toast('최소 1명은 출전해야 합니다'); S.deck.splice(i, 1); }
-  else { if (S.deck.length >= 5) return toast('편성은 최대 5명입니다'); S.deck.push(id); }
+  else { if (S.deck.length >= MAX_DECK) return toast(`편성은 최대 ${MAX_DECK}명입니다`); S.deck.push(id); }
   save(); startStage(); refreshPanel();
 }
 function autoDeck() {
-  const owned = CHAMPS.filter(c => S.owned[c.id]);
+  const owned = CHAMPS.filter(c => S.owned[c.id]), b = bonuses();
+  const pw = c => powerOf(calcStats(c.id, b));
   const deck = [];
   for (const p of Object.keys(POS)) {
-    const best = owned.filter(c => c.pos === p).sort((a, b) => powerOf(calcStats(b.id)) - powerOf(calcStats(a.id)))[0];
+    const best = owned.filter(c => c.pos === p).sort((a, c) => pw(c) - pw(a))[0];
     if (best) deck.push(best.id);
   }
-  for (const c of owned.sort((a, b) => powerOf(calcStats(b.id)) - powerOf(calcStats(a.id)))) if (deck.length < 5 && !deck.includes(c.id)) deck.push(c.id);
+  for (const c of owned.sort((a, c) => pw(c) - pw(a))) if (deck.length < MAX_DECK && !deck.includes(c.id)) deck.push(c.id);
   S.deck = deck; save(); startStage(); refreshPanel(); toast('자동 편성 완료');
 }
+
+// 전설 소환 연출
+let fxQ = [], fxT;
+function showLegendFx(list) { fxQ = list.slice(); nextFx(); }
+function nextFx() {
+  clearTimeout(fxT);
+  const fx = $('#fx'), x = fxQ.shift();
+  if (!x) { fx.classList.add('hidden'); fx.innerHTML = ''; return; }
+  fx.classList.remove('hidden');
+  fx.innerHTML = `<div class="rays"></div><div class="fxflash"></div>
+    <div class="fxbox"><div class="fxt">✨ 전설 소환! ✨</div>
+      <img class="fxsp" src="${splash(x.c.id)}" alt="" onerror="this.onerror=null;this.src='${img(x.c.id)}'">
+      <div class="fxn">${x.c.name}</div><div class="fxs">${POS[x.c.pos].icon} ${POS[x.c.pos].name} · ${x.isNew ? '<b class="newtag">NEW!</b>' : '중복 획득 (★ 강화 재료)'}</div>
+      <div class="fxh">${fxQ.length ? `터치하여 다음 (${fxQ.length}명 남음)` : '터치하여 닫기'}</div></div>`;
+  fxT = setTimeout(nextFx, 3600);
+}
+$('#fx').onclick = nextFx;
 
 // ===== 이벤트 =====
 document.querySelectorAll('#nav button').forEach(b => b.onclick = () => switchTab(b.dataset.tab));
@@ -603,7 +880,10 @@ $('#modalBox').onclick = e => {
 };
 $('#panel').onclick = e => {
   const f = e.target.closest('[data-f]'); if (f) { heroFilter = f.dataset.f; return refreshPanel(); }
+  const rf = e.target.closest('[data-rf]'); if (rf) { rarFilter = rf.dataset.rf === 'all' ? 'all' : +rf.dataset.rf; return refreshPanel(); }
+  const so = e.target.closest('[data-sort]'); if (so) { heroSort = so.dataset.sort; return refreshPanel(); }
   const lv = e.target.closest('[data-lv]'); if (lv) { levelUp(lv.dataset.lv, +lv.dataset.n); save(); return refreshPanel(); }
+  const gs = e.target.closest('[data-gs]'); if (gs) { forgeSel = gs.dataset.gs; return renderGearBox(); }
   const sl = e.target.closest('[data-slot]'); if (sl) return toggleDeck(S.deck[+sl.dataset.slot]);
   const card = e.target.closest('.card');
   if (card) {
@@ -613,9 +893,15 @@ $('#panel').onclick = e => {
   }
   const t = e.target.closest('button'); if (!t) return;
   if (t.id === 'autoDeck') autoDeck();
-  if (t.id === 'pull1' || t.id === 'pull10') { const r = gacha(t.id === 'pull1' ? 1 : 10); if (r) { lastPull = r; refreshPanel(); const top = Math.max(...r.map(x => x.r)); if (top === 3) toast('🌟 전설 챔피언 획득!'); } }
-  if (t.id === 'craftBtn') { const r = craft(); if (r) { lastCraft = r; refreshPanel(); $('#ovenIcon').classList.add('go'); } }
+  if (t.id === 'upAll') { upgradeAll(); refreshPanel(); }
+  if (t.id === 'synToggle') { showAllSyn = !showAllSyn; refreshPanel(); }
+  if (t.id === 'pull1' || t.id === 'pull10' || t.id === 'pullTk') {
+    const r = gacha(t.id === 'pull10' ? 10 : 1, t.id === 'pullTk');
+    if (r) { lastPull = r; refreshPanel(); const legends = r.filter(x => x.r === 3); if (legends.length) showLegendFx(legends); }
+  }
+  if (t.id === 'craftBtn') { const r = craft(); if (r) { lastCraft = r; if (r.result === 'equip') forgeSel = r.item.slot; refreshPanel(); $('#ovenIcon').classList.add('go'); } }
   if (t.id === 'autoCraftBtn') { S.autoCraft = !S.autoCraft; refreshPanel(); }
+  if (t.id === 'enhBtn') { const r = enhance(forgeSel); if (r) { lastEnh = { slot: forgeSel, ...r }; renderGearBox(); } }
   if (t.id === 'towerBtn') startTower();
 };
 
@@ -642,8 +928,9 @@ if (firstRun) openModal(`<h3 style="justify-content:center">협곡 키우기</h3
   리그 오브 레전드 챔피언 ${CHAMPS.length}명으로 즐기는 방치형 RPG입니다.<br>
   · 전투는 자동! 게이지가 차면 챔피언의 <b>고정 스킬</b>이 자동 발동됩니다.<br>
   · 💰 골드로 레벨업, 🎲 소환의 중복 카드로 ★성급 강화.<br>
-  · 탑/정글/미드/원딜/서포터를 모두 편성하면 팀 시너지 보너스!<br>
-  · 시작 선물: 💎 3,000 (소환 30회)</div><button class="btn big" id="closeBtn" style="width:100%;margin-top:12px">시작하기</button>`);
+  · 탑/정글/미드/원딜/서포터를 모두 편성하면 팀 시너지 보너스! 지역·조합 시너지도 확인해 보세요.<br>
+  · 시작 선물: 💎 3,000 (소환 30회) · 🎫 소환권 3장</div><button class="btn big" id="closeBtn" style="width:100%;margin-top:12px">시작하기</button>`);
+else if (migrationNote) openModal(`<h3 style="justify-content:center">🔨 대장간 개편</h3><div style="text-align:center;line-height:1.7">${migrationNote}<br><span class="sub">장비 6칸 · 다중 능력치 · 강화 시스템이 추가되었습니다.</span></div><button class="btn big" id="closeBtn" style="width:100%;margin-top:12px">확인</button>`);
 else offlineReward();
 
 let last = performance.now(), saveT = 0, craftT = 0, uiT = 0;
@@ -653,8 +940,12 @@ setInterval(() => {
   tick(dt);
   paintUnits();
   saveT += real; craftT += real; uiT += real;
-  if (S.autoCraft && craftT > 0.6) { craftT = 0; const r = craft(); if (r) { lastCraft = r; if (tab === 'forge') { const el = $('#craftRes'); if (el) el.innerHTML = craftResText(r); } } }
-  if (uiT > 0.5) { uiT = 0; refreshTop(); }
+  if (S.autoCraft && craftT > 0.6) {
+    craftT = 0;
+    const r = craft();
+    if (r) { lastCraft = r; if (tab === 'forge') { const el = $('#craftRes'); if (el) el.innerHTML = craftResText(r); if (r.result === 'equip') renderGearBox(); } }
+  }
+  if (uiT > 0.5) { uiT = 0; refreshTop(); updateStageLabel(); }
   if (saveT > 5) { saveT = 0; save(); }
 }, 50);
 window.addEventListener('beforeunload', save);

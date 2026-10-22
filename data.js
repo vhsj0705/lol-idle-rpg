@@ -44,3 +44,70 @@ const CHAMPS = CHAMP_RAW.split(';').map(row => {
   return { id, name, pos, tag, key, skill, eff, rarity };
 });
 const CHAMP_BY_ID = Object.fromEntries(CHAMPS.map(c => [c.id, c]));
+
+// ===== 시너지 (지역 / 특수 조합 / 단독) =====
+// 보너스 키: atk 공격력, hp 체력, def 방어력, crit 치명타 확률, aspd 공격 속도, skill 스킬 피해, gauge 게이지 충전,
+//          dr 받는 피해 감소, ls 생명력 흡수, gold 골드 획득, parts 부품 획득
+// tiers: [[필요 인원, 보너스], ...]  — 편성한 해당 챔피언 수가 기준 이상이면 가장 높은 단계가 적용된다
+// 지역 소속은 공식 챔피언 소개/세계관(룬테라 지역) 기준이며, 한 챔피언이 여러 그룹에 속할 수 있다
+const BONUS_NAMES = { atk: '공격력', hp: '체력', def: '방어력', crit: '치명타 확률', aspd: '공격 속도', skill: '스킬 피해', gauge: '게이지 충전', dr: '받는 피해 감소', ls: '생명력 흡수', gold: '골드 획득', parts: '부품 획득' };
+const bonusText = b => Object.entries(b).map(([k, v]) => `${BONUS_NAMES[k]} +${Math.round(v * 100)}%`).join(' · ');
+const SYNERGIES = [
+  // --- 지역 (2/4/6명) ---
+  { kind: 'region', icon: '🦁', name: '데마시아', desc: '정의와 명예의 왕국', members: 'Garen Lux Galio JarvanIV Fiora XinZhao Sylas Vayne Quinn Poppy Lucian Sona Kayle Morgana Shyvana'.split(' '),
+    tiers: [[2, { hp: .08, def: .08 }], [4, { hp: .16, def: .16, dr: .04 }], [6, { hp: .26, def: .26, dr: .10 }]] },
+  { kind: 'region', icon: '⚔️', name: '녹서스', desc: '힘이 곧 정의인 제국', members: 'Darius Draven Swain Katarina Leblanc Sion Vladimir Talon Riven Rell Samira Cassiopeia Kled Ambessa Briar'.split(' '),
+    tiers: [[2, { atk: .08 }], [4, { atk: .16, crit: .05 }], [6, { atk: .28, crit: .10 }]] },
+  { kind: 'region', icon: '🍃', name: '아이오니아', desc: '영혼과 균형의 땅', members: 'Ahri Akali Irelia Karma Kayn Kennen LeeSin MasterYi Shen Syndra MonkeyKing Xayah Rakan Yasuo Yone Zed Jhin Lillia Sett Hwei Varus Ivern'.split(' '),
+    tiers: [[2, { aspd: .08 }], [4, { aspd: .16, gauge: .10 }], [6, { aspd: .26, gauge: .20 }]] },
+  { kind: 'region', icon: '⚙️', name: '필트오버', desc: '진보의 도시', members: 'Caitlyn Vi Jayce Heimerdinger Camille Ezreal Orianna Seraphine Mel Corki'.split(' '),
+    tiers: [[2, { skill: .10 }], [4, { skill: .20, gold: .15 }], [6, { skill: .32, gold: .30 }]] },
+  { kind: 'region', icon: '🧪', name: '자운', desc: '화학과 혁신의 지하도시', members: 'Jinx Ekko Warwick Singed Blitzcrank Viktor DrMundo Twitch Zac Urgot Zeri Renata Ziggs Janna'.split(' '),
+    tiers: [[2, { crit: .05, ls: .03 }], [4, { crit: .10, ls: .06, aspd: .08 }], [6, { crit: .18, ls: .10, aspd: .16 }]] },
+  { kind: 'region', icon: '❄️', name: '프렐요드', desc: '얼어붙은 북방의 부족들', members: 'Ashe Braum Lissandra Sejuani Volibear Anivia Gragas Nunu Olaf Trundle Udyr Ornn Gnar Aurora'.split(' '),
+    tiers: [[2, { hp: .10 }], [4, { hp: .20, def: .10 }], [6, { hp: .34, def: .20, dr: .06 }]] },
+  { kind: 'region', icon: '🏜️', name: '슈리마', desc: '태양 원반의 사막 제국', members: 'Azir Nasus Renekton Sivir Rammus Amumu Taliyah Xerath Zilean Akshan Zaahen Naafiri Aatrox Nilah'.split(' '),
+    tiers: [[2, { atk: .06, skill: .06 }], [4, { atk: .12, skill: .14, hp: .08 }], [6, { atk: .22, skill: .26, hp: .16 }]] },
+  { kind: 'region', icon: '👻', name: '그림자 군도', desc: '검은 안개가 뒤덮은 섬', members: 'Thresh Hecarim Karthus Kalista Mordekaiser Maokai Yorick Viego Gwen Fiddlesticks Vex Kindred Senna Elise'.split(' '),
+    tiers: [[2, { ls: .04 }], [4, { ls: .08, atk: .10 }], [6, { ls: .14, atk: .20, dr: .05 }]] },
+  { kind: 'region', icon: '🏴‍☠️', name: '빌지워터', desc: '무법의 항구 도시', members: 'MissFortune Gangplank Graves TwistedFate Illaoi Nautilus Fizz Pyke TahmKench Nami'.split(' '),
+    tiers: [[2, { gold: .15 }], [4, { gold: .30, crit: .06 }], [6, { gold: .50, crit: .12, parts: .20 }]] },
+  { kind: 'region', icon: '🌀', name: '공허', desc: '룬테라를 갉아먹는 종말', members: 'Belveth Chogath Kaisa Khazix Kassadin KogMaw Malzahar Velkoz RekSai'.split(' '),
+    tiers: [[2, { atk: .08 }], [4, { atk: .16, skill: .12 }], [6, { atk: .28, skill: .24, ls: .05 }]] },
+  { kind: 'region', icon: '🌿', name: '이쉬탈', desc: '정글 속 마법의 땅', members: 'Neeko Nidalee Qiyana Zyra Rengar Milio Malphite Skarner'.split(' '),
+    tiers: [[2, { aspd: .06, crit: .03 }], [4, { aspd: .12, crit: .08 }], [6, { aspd: .20, crit: .14 }]] },
+  { kind: 'region', icon: '🌙', name: '타곤', desc: '별과 달이 닿는 산', members: 'Leona Diana Pantheon Soraka Aphelios Zoe AurelionSol Taric'.split(' '),
+    tiers: [[2, { gauge: .10 }], [4, { gauge: .20, skill: .10 }], [6, { gauge: .32, skill: .20, dr: .05 }]] },
+  { kind: 'region', icon: '🍄', name: '반들 시티 (요들)', desc: '작지만 강한 요들들', members: 'Teemo Tristana Lulu Veigar Rumble Poppy Kled Gnar Kennen Ziggs Corki Heimerdinger Vex Fizz'.split(' '),
+    tiers: [[2, { aspd: .06, gauge: .06 }], [4, { aspd: .12, gauge: .14, skill: .10 }], [6, { aspd: .20, gauge: .24, skill: .20 }]] },
+  // --- 특수 조합 (지정한 챔피언을 모두 편성) ---
+  { kind: 'squad', icon: '👑', name: '데마시아의 남매', desc: '가렌 + 럭스', members: ['Garen', 'Lux'], tiers: [[2, { atk: .12, hp: .12, def: .10 }]] },
+  { kind: 'squad', icon: '🪓', name: '녹서스의 형제', desc: '다리우스 + 드레이븐', members: ['Darius', 'Draven'], tiers: [[2, { atk: .20, crit: .08 }]] },
+  { kind: 'squad', icon: '💥', name: '피와 불꽃의 자매', desc: '바이 + 징크스', members: ['Vi', 'Jinx'], tiers: [[2, { crit: .10, aspd: .12 }]] },
+  { kind: 'squad', icon: '🪽', name: '타락한 자매', desc: '케일 + 모르가나', members: ['Kayle', 'Morgana'], tiers: [[2, { skill: .25, gauge: .10 }]] },
+  { kind: 'squad', icon: '🌬️', name: '바람의 형제', desc: '야스오 + 요네', members: ['Yasuo', 'Yone'], tiers: [[2, { aspd: .18, crit: .10 }]] },
+  { kind: 'squad', icon: '☀️', name: '해와 달', desc: '레오나 + 다이애나', members: ['Leona', 'Diana'], tiers: [[2, { atk: .12, skill: .20, gauge: .10 }]] },
+  { kind: 'squad', icon: '🛡️', name: '프렐요드 연맹', desc: '애쉬 + 세주아니 + 브라움', members: ['Ashe', 'Sejuani', 'Braum'], tiers: [[3, { hp: .20, def: .20, aspd: .10, dr: .05 }]] },
+  { kind: 'squad', icon: '🍻', name: '빌지워터 선술집', desc: '미스 포츈 + 그레이브즈 + 트위스티드 페이트', members: ['MissFortune', 'Graves', 'TwistedFate'], tiers: [[3, { gold: .30, crit: .10, parts: .15 }]] },
+  { kind: 'squad', icon: '🔧', name: '필트오버 집행단', desc: '케이틀린 + 제이스 + 바이', members: ['Caitlyn', 'Jayce', 'Vi'], tiers: [[3, { atk: .18, skill: .15, def: .10 }]] },
+  { kind: 'squad', icon: '🥁', name: '요들 특공대', desc: '룰루 + 티모 + 트리스타나 + 베이가 + 럼블', members: ['Lulu', 'Teemo', 'Tristana', 'Veigar', 'Rumble'], tiers: [[5, { aspd: .20, gauge: .20, skill: .25, atk: .10 }]] },
+  { kind: 'squad', icon: '🦑', name: '공허의 군단', desc: '카직스 + 렉사이 + 초가스 + 벨코즈 + 카이사', members: ['Khazix', 'RekSai', 'Chogath', 'Velkoz', 'Kaisa'], tiers: [[5, { atk: .25, skill: .20, ls: .08 }]] },
+  { kind: 'squad', icon: '💀', name: '검은 안개의 영혼', desc: '쓰레쉬 + 카서스 + 헤카림 + 모데카이저', members: ['Thresh', 'Karthus', 'Hecarim', 'Mordekaiser'], tiers: [[4, { ls: .10, hp: .15, atk: .12 }]] },
+  { kind: 'squad', icon: '🐉', name: '용을 닮은 자들', desc: '쉬바나 + 아우렐리온 솔 + 아트록스 + 우디르', members: ['Shyvana', 'AurelionSol', 'Aatrox', 'Udyr'], tiers: [[4, { atk: .20, skill: .20, hp: .10 }]] },
+  { kind: 'squad', icon: '🐆', name: '정글의 사냥꾼', desc: '니달리 + 렝가 + 니코 + 키아나', members: ['Nidalee', 'Rengar', 'Neeko', 'Qiyana'], tiers: [[4, { crit: .15, aspd: .15, atk: .10 }]] },
+  { kind: 'squad', icon: '🌌', name: '룬테라의 수호자들', desc: '가렌 + 아리 + 애쉬 + 징크스 + 카이사 + 아지르 + 트위스티드 페이트', members: ['Garen', 'Ahri', 'Ashe', 'Jinx', 'Kaisa', 'Azir', 'TwistedFate'], tiers: [[7, { atk: .20, hp: .20, def: .15, skill: .15 }]] },
+  { kind: 'squad', icon: '🧙', name: '대마법사의 연회', desc: '럭스 + 오리아나 + 신드라 + 조이 + 아리 + 르블랑 + 말자하 + 빅토르', members: ['Lux', 'Orianna', 'Syndra', 'Zoe', 'Ahri', 'Leblanc', 'Malzahar', 'Viktor'], tiers: [[8, { skill: .45, gauge: .25, atk: .12 }]] },
+  { kind: 'squad', icon: '🏆', name: '전설의 열 명', desc: '10명 모두 전설 등급 편성', members: [], need: 'legend10', tiers: [[10, { atk: .30, hp: .30, def: .20, skill: .20, gold: .20 }]] },
+  // --- 단독 (1명) ---
+  { kind: 'solo', icon: '🗡️', name: '데마시아의 힘', desc: '가렌 편성', members: ['Garen'], tiers: [[1, { hp: .08, def: .06 }]] },
+  { kind: 'solo', icon: '🌪️', name: '방랑 검객', desc: '야스오 편성', members: ['Yasuo'], tiers: [[1, { crit: .08 }]] },
+  { kind: 'solo', icon: '🍄', name: '정찰 개시', desc: '티모 편성', members: ['Teemo'], tiers: [[1, { gold: .12 }]] },
+  { kind: 'solo', icon: '🪄', name: '무한한 잠재력', desc: '베이가 편성', members: ['Veigar'], tiers: [[1, { skill: .15 }]] },
+  { kind: 'solo', icon: '🥋', name: '명상 수련', desc: '마스터 이 편성', members: ['MasterYi'], tiers: [[1, { aspd: .10 }]] },
+  { kind: 'solo', icon: '⭐', name: '별의 치유', desc: '소라카 편성', members: ['Soraka'], tiers: [[1, { gauge: .12 }]] },
+  { kind: 'solo', icon: '🎴', name: '운명의 카드', desc: '트위스티드 페이트 편성', members: ['TwistedFate'], tiers: [[1, { gold: .15, parts: .10 }]] },
+  { kind: 'solo', icon: '🧭', name: '탐험가', desc: '이즈리얼 편성', members: ['Ezreal'], tiers: [[1, { parts: .20 }]] },
+  { kind: 'solo', icon: '🤖', name: '증기 기관', desc: '블리츠크랭크 편성', members: ['Blitzcrank'], tiers: [[1, { hp: .08, dr: .03 }]] },
+];
+// 현재 모르는 ID가 있어도 오류가 나지 않도록 존재하는 챔피언만 남긴다
+SYNERGIES.forEach(s => { s.members = s.members.filter(id => CHAMP_BY_ID[id]); });

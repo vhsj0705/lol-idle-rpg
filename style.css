@@ -129,5 +129,67 @@ h3 { margin: 6px 0 8px; color: var(--gold); font-size: 15px; display: flex; just
 .progress { height: 8px; background: #ffffff15; border-radius: 4px; overflow: hidden; margin: 4px 0; }
 .progress i { display: block; height: 100%; background: linear-gradient(90deg, #ffb52e, #ffd84a); }
 
+/* 상단 재화 */
+.res.tk { flex: .7; }
+
+/* 권장 전투력 / 성공 가능성 */
+#stagebar { gap: 6px; }
+#stageLabel { line-height: 1.4; }
+.rec { display: inline-block; font-size: 12px; font-weight: 700; padding: 0 6px; border-radius: 8px; background: #00000055; white-space: nowrap; }
+.o-safe { color: #3ee86a; } .o-ok { color: #9be86e; } .o-even { color: #b8bfcc; } .o-risk { color: #ff9c3b; } .o-bad { color: #ff4f6d; }
+
+/* 전투: 10명 편성 시 아군 2열 · 게이지 수치 */
+#field { min-height: 320px; }
+#allies.two { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; width: 58%; }
+#allies.two .unit { padding: 3px; gap: 4px; }
+#allies.two .unit .pic { width: 30px; height: 30px; }
+#allies.two .unit .nm { font-size: 10px; }
+#allies.two ~ #enemies { width: 36%; }
+.bar { height: 11px; border-radius: 4px; }
+.bar .bt { position: absolute; inset: 0; font-style: normal; font-size: 8px; line-height: 11px; text-align: center; color: #fff; text-shadow: 0 0 2px #000, 0 0 2px #000; white-space: nowrap; overflow: hidden; }
+.mimg { width: 100%; height: 100%; object-fit: contain; }
+.mimg.big { width: 64px; height: 64px; }
+
+/* 도감 */
+.card .cv { font-size: 9px; color: var(--teal); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card.indeck { box-shadow: 0 0 0 1px var(--teal) inset; }
+
+/* 편성 시너지 */
+.slots { grid-template-rows: auto auto; }
+.synlist { margin-top: 8px; display: grid; gap: 6px; }
+.synlist .si { background: #00000044; border: 1px solid var(--line); border-radius: 6px; padding: 6px; font-size: 12px; }
+.synlist .si.on { border-color: var(--teal); }
+.synlist .tier { font-size: 11px; color: var(--dim); }
+.synlist .tier.on { color: var(--teal); }
+
+/* 대장간 */
+.gear { grid-template-columns: repeat(3, 1fr); }
+.gi { cursor: pointer; }
+.gi.sel { box-shadow: 0 0 0 2px var(--gold); }
+.gstats { margin-top: 6px; font-size: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 2px 8px; color: var(--teal); }
+.odds { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 12px; color: var(--dim); }
+
+/* 소환 결과 등급 강조 */
+.pull-res .card.leg { box-shadow: 0 0 14px #ffb52e, 0 0 4px #fff inset; animation: pop .35s ease-out backwards, legGlow 1.2s ease-in-out infinite alternate; }
+.pull-res .card.epic { box-shadow: 0 0 8px #b46cff; }
+@keyframes legGlow { to { box-shadow: 0 0 22px #ffd84a, 0 0 8px #fff inset; } }
+
+/* 전설 소환 연출 */
+#fx { position: fixed; inset: 0; z-index: 40; display: flex; align-items: center; justify-content: center; background: radial-gradient(circle, #3b2a0ccc 0%, #000e 70%); overflow: hidden; cursor: pointer; }
+#fx.hidden { display: none; }
+#fx .rays { position: absolute; width: 220vmax; height: 220vmax; background: repeating-conic-gradient(#ffd84a33 0 6deg, transparent 6deg 18deg); animation: spin 8s linear infinite; }
+#fx .fxflash { position: absolute; inset: 0; background: #fff; animation: fxflash .7s ease-out forwards; pointer-events: none; }
+#fx .fxbox { position: relative; text-align: center; animation: fxin .6s cubic-bezier(.2, 1.6, .4, 1) both; }
+#fx .fxt { font-size: 28px; font-weight: 900; color: #ffd84a; text-shadow: 0 0 12px #ffb52e, 0 2px 2px #000; letter-spacing: 2px; }
+#fx .fxsp { width: 200px; height: 364px; object-fit: cover; border-radius: 12px; border: 3px solid #ffb52e; margin: 10px 0; box-shadow: 0 0 30px #ffb52e, 0 0 60px #ffb52e88; animation: legGlow 1.2s ease-in-out infinite alternate; }
+#fx .fxn { font-size: 26px; font-weight: 900; color: #fff; text-shadow: 0 0 10px #ffb52e; }
+#fx .fxs { font-size: 14px; color: var(--gold2); margin-top: 4px; }
+#fx .newtag { color: #fff; background: var(--red); padding: 0 6px; border-radius: 6px; }
+#fx .fxh { font-size: 12px; color: var(--dim); margin-top: 10px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes fxflash { from { opacity: .9; } to { opacity: 0; } }
+@keyframes fxin { from { transform: scale(.2) rotate(-8deg); opacity: 0; } to { transform: none; opacity: 1; } }
+@media (max-height: 640px) { #fx .fxsp { width: 140px; height: 255px; } }
+
 #toast { position: fixed; left: 50%; bottom: 90px; transform: translateX(-50%); background: #000d; border: 1px solid var(--gold); color: var(--gold2); padding: 8px 14px; border-radius: 18px; font-size: 13px; opacity: 0; transition: opacity .25s; pointer-events: none; z-index: 30; max-width: 90%; text-align: center; }
 #toast.show { opacity: 1; }

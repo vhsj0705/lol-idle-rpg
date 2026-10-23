@@ -9,6 +9,11 @@ powershell -ExecutionPolicy Bypass -File serve.ps1
 ```
 챔피언 이미지와 원작 스킬 설명은 Riot Data Dragon CDN에서 불러오므로 인터넷 연결이 필요합니다.
 
+## CI / 배포
+`.github/workflows/ci-pages.yml`이 push·PR마다 JS 문법 검사와 데이터 무결성 검사(`node scripts/validate.mjs`)를 실행하고, `main`에 push되면 GitHub Pages로 자동 배포합니다.
+처음 한 번은 저장소 **Settings → Pages → Build and deployment → Source**를 **GitHub Actions**로 바꿔야 합니다.
+로컬에서 검사만 돌리려면 `node scripts/validate.mjs`를 실행합니다.
+
 ## 데이터 출처
 | 항목 | 출처 |
 |---|---|
